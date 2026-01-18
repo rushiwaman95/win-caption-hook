@@ -1,0 +1,3 @@
+pywinauto
+flask
+google-generativeai

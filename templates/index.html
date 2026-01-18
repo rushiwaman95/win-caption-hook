@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Transcript & AI</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --card-bg: #151515;
+            --accent: #4CAF50;
+            --text-main: #eee;
+            --text-dim: #888;
+            --border: #333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', sans-serif;
+            padding: 20px;
+            padding-bottom: 100px;
+            min-height: 100vh;
+        }
+
+        /* --- Header --- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #1a1a1a;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            position: sticky;
+            top: 10px;
+            z-index: 100;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .header h1 {
+            color: var(--accent);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-dim);
+            background: #111;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid #222;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+            }
+
+            70% {
+                opacity: 0.5;
+                box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
+            }
+
+            100% {
+                opacity: 1;
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+
+        /* --- Transcript Grid --- */
+        #transcript {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* --- Card Styles --- */
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid var(--border);
+            position: relative;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            opacity: 0;
+            animation: cardSlideIn 0.4s forwards;
+        }
+
+        @keyframes cardSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card:hover {
+            border-color: #555;
+            background: #1a1a1a;
+        }
+
+        /* Selected State */
+        .card.selected {
+            border-color: var(--accent);
+            background: #121f12;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.15);
+        }
+
+        .card.selected::before {
+            content: "✓";
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            background: var(--accent);
+            color: #000;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        /* Action Buttons (Top Right) */
+        .card-actions {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            gap: 8px;
+            z-index: 5;
+        }
+
+        .card-btn {
+            background: #222;
+            border: 1px solid #333;
+            color: #888;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .card-btn:hover {
+            background: #333;
+            color: white;
+            border-color: #555;
+        }
+
+        .card-btn.copied {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .card-btn.delete:hover {
+            background: #cf3030;
+            border-color: #cf3030;
+            color: white;
+        }
+
+        /* Content */
+        .card-content {
+            padding-right: 70px;
+            /* Space for buttons */
+        }
+
+        .sentence {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #333;
+            opacity: 0;
+            animation: sentenceFadeIn 0.5s forwards;
+        }
+
+        @keyframes sentenceFadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(-5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .sentence:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        /* --- AI FAB (Floating Action Button) --- */
+        .ai-fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--accent);
+            color: #000;
+            padding: 15px 25px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transform: translateY(150px);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 999;
+        }
+
+        .ai-fab.visible {
+            transform: translateY(0);
+        }
+
+        .ai-fab:hover {
+            transform: scale(1.05);
+            background: #5ccc60;
+        }
+
+        .badge {
+            background: #000;
+            color: var(--accent);
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        /* --- AI Modal --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal {
+            background: #1a1a1a;
+            width: 90%;
+            max-width: 650px;
+            border-radius: 16px;
+            border: 1px solid #333;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            transform: scale(0.9);
+            transition: transform 0.3s;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            max-height: 80vh;
+        }
+
+        .modal-overlay.show .modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 20px;
+            background: #222;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            color: #ddd;
+            line-height: 1.6;
+        }
+
+        /* --- AI Response Styling (Humanized) --- */
+        .ai-result {
+            font-size: 16px;
+        }
+
+        /* Clean list styling */
+        .ai-result ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .ai-result li {
+            position: relative;
+            padding-left: 25px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+            color: #eee;
+        }
+
+        /* Custom bullet points */
+        .ai-result li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 20px;
+            line-height: 1;
+            top: -2px;
+        }
+
+        /* Make bold text pop */
+        .ai-result b,
+        .ai-result strong {
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .close-btn:hover {
+            color: white;
+        }
+
+        .loading-ai {
+            text-align: center;
+            padding: 20px;
+            color: var(--accent);
+            font-style: italic;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #444;
+            border: 2px dashed #222;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1><span>📝</span> Live Transcript</h1>
+        <div class="status">
+            <div class="status-dot"></div>
+            <span>Listening...</span>
+        </div>
+    </div>
+
+    <div id="transcript">
+        <div class="empty-state" id="emptyState">Listening for speech...</div>
+    </div>
+
+    <!-- AI Button -->
+    <button class="ai-fab" id="aiBtn" onclick="openAIModal()">
+        <span>✨ Ask AI</span>
+        <div class="badge" id="selectedCount">0</div>
+    </button>
+
+    <!-- AI Modal -->
+    <div class="modal-overlay" id="aiModalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 style="color: var(--accent)">AI Analysis</h3>
+                <button class="close-btn" onclick="closeAIModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="aiContent">
+                <!-- Content injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State Management
+        let processedSentencesCount = 0; // Raw count of processed sentences
+        let selectedCards = new Set();
+        let deletedCardIndices = new Set();
+
+        // --- Fetch & Process Logic ---
+
+        function fetchTranscript() {
+            fetch('/get_caption')
+                .then(r => r.json())
+                .then(data => {
+                    const allSentences = data.sentences;
+
+                    // If new sentences arrived
+                    if (allSentences.length > processedSentencesCount) {
+
+                        const container = document.getElementById('transcript');
+                        const emptyState = document.getElementById('emptyState');
+                        if (emptyState) emptyState.remove();
+
+                        // Loop strictly through the NEW sentences
+                        for (let i = processedSentencesCount; i < allSentences.length; i++) {
+
+                            // 1 Sentence = 1 Card
+                            const cardIndex = i;
+
+                            // Skip if user deleted this card
+                            if (deletedCardIndices.has(cardIndex)) continue;
+
+                            // Check if Card Exists (Should not happen for new sentences, but safe check)
+                            let card = document.getElementById(`card-${cardIndex}`);
+
+                            // Sentence Text
+                            const text = allSentences[i];
+
+                            if (!card) {
+                                // --- Create NEW Card ---
+                                // Note: We insert at 'afterbegin' (TOP)
+                                const html = createCardSkeleton(cardIndex, text);
+                                container.insertAdjacentHTML('afterbegin', html);
+                            }
+                            // No need for else branch as we don't append to existing cards anymore
+                        }
+
+                        // Update our tracker
+                        processedSentencesCount = allSentences.length;
+                    }
+                })
+                .catch(err => console.log("Waiting for backend..."));
+        }
+
+        // --- HTML Generator ---
+
+        function createCardSkeleton(cardIndex, firstSentence) {
+            const cardId = `card-${cardIndex}`;
+            return `
+                <div class="card" id="${cardId}" onclick="toggleSelection('${cardId}')">
+                    <div class="card-actions">
+                        <button class="card-btn" onclick="askAiForCard(event, '${cardId}')" title="Ask AI">
+                            ✧˖
+                        </button>
+                        <button class="card-btn" onclick="copyCard(event, '${cardId}')" title="Copy Text">
+                            📋
+                        </button>
+                        <button class="card-btn delete" onclick="deleteCard(event, '${cardId}', ${cardIndex})" title="Delete Card">
+                            🗑️
+                        </button>
+                    </div>
+                    <div class="card-content">
+                        <div class="sentence">${firstSentence}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- User Actions ---
+
+        function askAiForCard(event, cardId) {
+            event.stopPropagation();
+            const card = document.getElementById(cardId);
+            const text = Array.from(card.querySelectorAll('.sentence'))
+                .map(div => div.textContent)
+                .join('\n');
+            openAIModal(text);
+        }
+
+        function toggleSelection(cardId) {
+            const card = document.getElementById(cardId);
+            const btn = document.getElementById('aiBtn');
+            const badge = document.getElementById('selectedCount');
+
+            if (selectedCards.has(cardId)) {
+                selectedCards.delete(cardId);
+                card.classList.remove('selected');
+            } else {
+                selectedCards.add(cardId);
+                card.classList.add('selected');
+            }
+
+            // Update UI
+            const count = selectedCards.size;
+            badge.textContent = count;
+
+            if (count > 0) {
+                btn.classList.add('visible');
+            } else {
+                btn.classList.remove('visible');
+            }
+        }
+
+        function copyCard(event, cardId) {
+            event.stopPropagation();
+            const card = document.getElementById(cardId);
+            const text = Array.from(card.querySelectorAll('.sentence'))
+                .map(div => div.textContent)
+                .join('\n');
+
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.currentTarget;
+                const originalHtml = btn.innerHTML;
+
+                btn.classList.add('copied');
+                btn.innerHTML = '✔️';
+
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = originalHtml;
+                }, 1500);
+            });
+        }
+
+        function deleteCard(event, cardId, index) {
+            event.stopPropagation();
+            const card = document.getElementById(cardId);
+
+            if (selectedCards.has(cardId)) {
+                selectedCards.delete(cardId);
+                document.getElementById('selectedCount').textContent = selectedCards.size;
+                if (selectedCards.size === 0) document.getElementById('aiBtn').classList.remove('visible');
+            }
+
+            deletedCardIndices.add(index);
+
+            card.style.transform = 'translateX(50px)';
+            card.style.opacity = '0';
+            setTimeout(() => card.remove(), 300);
+        }
+
+        // --- AI Logic (Connected to Load Balancer) ---
+
+        function openAIModal(textOverride = null) {
+            const overlay = document.getElementById('aiModalOverlay');
+            const content = document.getElementById('aiContent');
+
+            overlay.classList.add('show');
+            content.innerHTML = '<div class="loading-ai">Generating...</div>';
+
+            // 1. Gather text
+            let fullText = "";
+            let cardCount = 0;
+
+            if (textOverride) {
+                // Direct card click
+                fullText = textOverride;
+                cardCount = 1;
+            } else {
+                // Main button: Gather from selection
+                const cards = document.querySelectorAll('.card');
+                cards.forEach(card => {
+                    if (selectedCards.has(card.id)) {
+                        const text = Array.from(card.querySelectorAll('.sentence'))
+                            .map(d => d.textContent).join(' ');
+                        fullText += text + "\n\n";
+                        cardCount++;
+                    }
+                });
+            }
+
+            // 2. Send to Python Backend (Load Balancer)
+            fetch('/ask_ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: fullText })
+            })
+                .then(r => r.json())
+                .then(data => {
+                    // 3. Display Result (Wrapped in .ai-result class for styling)
+                    const html = `
+                    <p style="color:#666; font-size:14px; margin-bottom:15px">
+                       Context: ${cardCount} card(s) selected
+                    </p>
+                    <div class="ai-result">
+                       ${data.answer}
+                    </div>
+                `;
+                    content.innerHTML = html;
+                })
+                .catch(err => {
+                    content.innerHTML = `<div style="color:red">Error: ${err}</div>`;
+                });
+        }
+
+        function closeAIModal() {
+            document.getElementById('aiModalOverlay').classList.remove('show');
+        }
+
+        document.getElementById('aiModalOverlay').addEventListener('click', (e) => {
+            if (e.target.id === 'aiModalOverlay') closeAIModal();
+        });
+
+        // Start Loop
+        setInterval(fetchTranscript, 1000);
+    </script>
+</body>
+
+</html>
