@@ -1,6 +1,7 @@
 from pywinauto import Desktop
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 import threading
+import json
 import socket
 import logging
 import time
@@ -9,7 +10,6 @@ import warnings
 import os
 
 # Suppress warnings from google.generativeai about deprecation
-# We are doing this to maintain stability while the new library is adopted
 warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 warnings.filterwarnings("ignore", category=UserWarning, module="google.generativeai")
 
@@ -24,11 +24,12 @@ app = Flask(__name__)
 
 # --- 🧠 AI CONFIGURATION ---
 
-# Global variable to hold the iterator
 key_pool = None
+WORKING_MODEL_NAME = "gemini-3-flash-preview"
 
-# 3. Working Model
-WORKING_MODEL_NAME = "gemini-3-flash-preview" 
+# Shorter prompt = faster first token
+SYSTEM_PROMPT = """You are an AWS DevOps expert helping with interview prep.
+Rules: Be concise. Use HTML: <ul><li> for lists, <b> for key terms. Max 5 points."""
 
 def setup_keys():
     global key_pool
@@ -57,43 +58,72 @@ def setup_keys():
     key_pool = cycle(api_keys)
     print("\n✅ Keys configured successfully!\n")
 
+
+# 🚀 NEW: Streaming AI Response
+@app.route('/ask_ai_stream', methods=['POST'])
+def ask_ai_stream():
+    data = request.json
+    text = data.get('text', '')
+    
+    if not text:
+        return Response("data: {\"error\": \"No text\"}\n\n", mimetype='text/event-stream')
+    
+    def generate():
+        global key_pool, WORKING_MODEL_NAME
+        
+        if key_pool is None:
+            yield f"data: {json.dumps({'error': 'API keys not configured'})}\n\n"
+            return
+        
+        current_key = next(key_pool)
+        print(f"🔑 Using Key: ...{current_key[-6:]}")
+        
+        try:
+            genai.configure(api_key=current_key)
+            model = genai.GenerativeModel(WORKING_MODEL_NAME)
+            
+            prompt = f"{SYSTEM_PROMPT}\n\nQuestion: {text}"
+            
+            # 🚀 STREAMING: stream=True
+            response = model.generate_content(prompt, stream=True)
+            
+            for chunk in response:
+                if chunk.text:
+                    yield f"data: {json.dumps({'chunk': chunk.text})}\n\n"
+            
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return Response(generate(), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no'
+    })
+
+
+# Fallback non-streaming endpoint
 def get_ai_response(user_text):
     global WORKING_MODEL_NAME, key_pool
     
     if key_pool is None:
         return "Error: API keys not configured."
     
-    # Get next key
     current_key = next(key_pool)
     print(f"🔑 Using Key: ...{current_key[-6:]}") 
     
     try:
         genai.configure(api_key=current_key)
-        
-        # --- UPDATED PROMPT FOR HUMAN-LIKE, FORMATTED ANSWERS ---
-        prompt = f"""
-        You are a smart, professional AWS DevOps engineer who is helpong a friend to crack the technical interview.
-
-        CONTEXT FROM USER:
-        "{user_text}"
-        
-        YOUR TASK:
-        1. Answer the implied question.
-        2. TONE: Professional, short, and direct. Do NOT say "As an AI" or "Based on the text". Just give the answer.
-        3. FORMAT: You MUST return the answer using HTML tags. Use <ul> for the list and <li> for points. Use <b> for key terms.
-        4. LENGTH: Keep it under 5 bullet points.
-        5. If the user asks for a code snippet, provide it in a code block.
-        6. Answer all questions in a professional and informative manner but keep it short, simple and concise.
-        """
-
+        prompt = f"{SYSTEM_PROMPT}\n\nQuestion: {user_text}"
         model = genai.GenerativeModel(WORKING_MODEL_NAME)
         response = model.generate_content(prompt)
-        
         return response.text
         
     except Exception as e:
         print(f"❌ AI Error: {e}")
         return f"<span style='color:red'>Error: {str(e)}</span>"
+
 
 # -----------------------------------------
 
@@ -120,7 +150,6 @@ def ask_ai_route():
     if not text:
         return jsonify({'answer': 'No text selected.'})
     
-    # Call our load balanced function
     answer = get_ai_response(text)
     return jsonify({'answer': answer})
 
@@ -236,4 +265,4 @@ if __name__ == '__main__':
     setup_keys()
     threading.Thread(target=capture_captions, daemon=True).start()
     print(f"Open: http://{get_ip()}:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
