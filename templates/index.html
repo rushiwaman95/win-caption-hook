@@ -2,265 +2,159 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Transcript</title>
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Live Captions</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #111;
-            color: #ccc;
-            font-family: monospace;
-            padding: 20px;
-            max-width: 700px;
-            margin: 0 auto;
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            background:#0a0a0a;
+            color:#e0e0e0;
+            font-family:-apple-system,system-ui,sans-serif;
         }
-        .top {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #333;
+        .cards{
+            padding:16px 16px 80px;
+            display:flex;
+            flex-direction:column;
+            gap:2px;
         }
-        .top h1 { font-size: 14px; color: #888; }
-        .dot {
-            width: 6px; height: 6px;
-            background: #4CAF50;
-            border-radius: 50%;
-            display: inline-block;
-            animation: pulse 1.5s infinite;
+        .card{
+            background:#111;
+            padding:14px 16px;
+            font-size:14px;
+            line-height:1.6;
+            border-bottom:1px solid #1a1a1a;
+            border-radius:8px;
+            position:relative;
+            animation:fadeIn .3s;
+            word-break:break-word;
+            -webkit-user-select:text;
+            user-select:text;
+            cursor:pointer;
         }
-        @keyframes pulse { 50% { opacity: 0.3; } }
-
-        #transcript { display: flex; flex-direction: column; gap: 8px; }
-
-        .entry {
-            padding: 10px 12px;
-            background: #1a1a1a;
-            border: 1px solid #222;
-            border-radius: 4px;
-            font-size: 14px;
-            line-height: 1.5;
-            cursor: pointer;
-            position: relative;
-            transition: opacity 0.2s;
+        .card .cp{
+            position:absolute;
+            top:10px;right:12px;
+            background:none;
+            border:1px solid #333;
+            color:#666;
+            font-size:11px;
+            padding:4px 10px;
+            border-radius:4px;
+            cursor:pointer;
+            opacity:0;
+            transition:opacity .2s;
+            font-family:inherit;
         }
-        .entry:hover { border-color: #444; }
-        .entry.copied { border-color: #4CAF50; }
-        .entry .time {
-            font-size: 11px;
-            color: #555;
-            margin-bottom: 4px;
+        .card:hover .cp{opacity:1}
+        @media(max-width:600px){.card .cp{opacity:1}}
+        .card .cp.done{color:#4CAF50;border-color:#4CAF50}
+        @keyframes fadeIn{
+            from{opacity:0;transform:translateY(-6px)}
+            to{opacity:1;transform:translateY(0)}
         }
-        .entry .actions {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            display: flex;
-            gap: 6px;
+        .card.active{
+            border-left:3px solid #4CAF50;
+            background:#161616;
         }
-        .entry .actions button {
-            background: none;
-            border: none;
-            color: #555;
-            cursor: pointer;
-            font-size: 12px;
-            padding: 2px 6px;
+        .empty{
+            text-align:center;
+            color:#222;
+            padding:80px 20px;
+            font-size:13px;
         }
-        .entry .actions button:hover { color: #fff; }
-
-        .empty { color: #333; text-align: center; padding: 40px; font-size: 13px; }
-
-        .copy-all {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #222;
-            color: #aaa;
-            border: 1px solid #333;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: monospace;
-            font-size: 13px;
+        .bar{
+            position:fixed;
+            bottom:0;left:0;right:0;
+            background:#0a0a0a;
+            border-top:1px solid #1a1a1a;
+            padding:12px 16px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            font-size:12px;
+            color:#333;
         }
-        .copy-all:hover { color: #fff; border-color: #555; }
-        .copy-all.copied { color: #4CAF50; border-color: #4CAF50; }
-
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: none; justify-content: center; align-items: center;
-            z-index: 100;
+        .bar button{
+            background:#161616;
+            color:#888;
+            border:1px solid #222;
+            padding:8px 16px;
+            border-radius:6px;
+            cursor:pointer;
+            font-size:12px;
+            font-family:inherit;
         }
-        .modal-overlay.show { display: flex; }
-        .modal {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 6px;
-            width: 90%; max-width: 600px; max-height: 80vh;
-            display: flex; flex-direction: column;
-            overflow: hidden;
-        }
-        .modal-head {
-            padding: 12px 16px;
-            border-bottom: 1px solid #222;
-            display: flex; justify-content: space-between; align-items: center;
-            font-size: 13px; color: #888;
-        }
-        .modal-head button { background: none; border: none; color: #555; cursor: pointer; font-size: 18px; }
-        .modal-head button:hover { color: #fff; }
-        .modal-body {
-            padding: 16px;
-            overflow-y: auto;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        .modal-body .status { font-size: 12px; color: #555; margin-bottom: 8px; }
-        .loading { color: #4CAF50; }
+        .bar button:active{background:#222}
+        .bar button.done{color:#4CAF50;border-color:#4CAF50}
     </style>
 </head>
 <body>
-
-<div class="top">
-    <h1>transcript</h1>
-    <span class="dot"></span>
+<div class="cards" id="cards">
+    <div class="empty" id="empty">waiting for captions</div>
 </div>
-
-<div id="transcript">
-    <div class="empty" id="emptyState">listening...</div>
+<div class="bar">
+    <span id="count">0 cards</span>
+    <button onclick="copyAll(this)">copy all</button>
 </div>
-
-<button class="copy-all" onclick="copyAll()">copy all</button>
-
-<div class="modal-overlay" id="modal">
-    <div class="modal">
-        <div class="modal-head">
-            <span>ai</span>
-            <button onclick="closeModal()">&times;</button>
-        </div>
-        <div class="modal-body" id="aiContent"></div>
-    </div>
-</div>
-
 <script>
-    let processed = 0;
-    let deleted = new Set();
-    let streamCtrl = null;
+let rendered=0;
+let allTexts=[];
 
-    function fetchTranscript() {
-        fetch('/get_caption')
-            .then(r => r.json())
-            .then(data => {
-                const s = data.sentences;
-                if (s.length > processed) {
-                    const el = document.getElementById('emptyState');
-                    if (el) el.remove();
-                    const c = document.getElementById('transcript');
-                    for (let i = processed; i < s.length; i++) {
-                        if (deleted.has(i)) continue;
-                        c.insertAdjacentHTML('afterbegin', entry(i, s[i]));
-                    }
-                    processed = s.length;
-                }
-            })
-            .catch(() => {});
+function esc(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+setInterval(()=>{
+    fetch('/stream').then(r=>r.json()).then(d=>{
+        updateCurrent(d.current||'');
+        updateCards(d.cards||[]);
+    }).catch(()=>{});
+},200);
+
+function updateCurrent(text){
+    let el=document.getElementById('current');
+    if(text){
+        const e=document.getElementById('empty'); if(e) e.remove();
+        if(el) el.textContent=text;
+        else document.getElementById('cards').insertAdjacentHTML('afterbegin',
+            '<div class="card active" id="current">'+esc(text)+'</div>');
+    } else {
+        if(el) el.remove();
     }
+}
 
-    function entry(i, text) {
-        return `<div class="entry" id="e${i}">
-            <div class="actions">
-                <button onclick="askAi(event,${i})" title="AI">✦</button>
-                <button onclick="copy(event,${i})" title="Copy">⎘</button>
-                <button onclick="del(event,${i})" title="Delete">×</button>
-            </div>
-            <div class="text">${text}</div>
-        </div>`;
+function updateCards(cards){
+    if(cards.length<=rendered) return;
+    const e=document.getElementById('empty'); if(e) e.remove();
+    for(let i=rendered;i<cards.length;i++){
+        const h='<div class="card" id="c'+i+'">'+
+            '<button class="cp" onclick="cpCard(event,'+i+')">copy</button>'+
+            '<span class="t">'+esc(cards[i])+'</span></div>';
+        const cur=document.getElementById('current');
+        if(cur) cur.insertAdjacentHTML('afterend',h);
+        else document.getElementById('cards').insertAdjacentHTML('afterbegin',h);
     }
+    allTexts=cards;
+    rendered=cards.length;
+    document.getElementById('count').textContent=rendered+' card'+(rendered!==1?'s':'');
+}
 
-    function copy(e, i) {
-        e.stopPropagation();
-        const el = document.getElementById('e' + i);
-        const text = el.querySelector('.text').textContent;
-        navigator.clipboard.writeText(text);
-        el.classList.add('copied');
-        setTimeout(() => el.classList.remove('copied'), 1000);
-    }
+function cpCard(e,i){
+    e.stopPropagation();
+    const c=document.getElementById('c'+i);
+    const b=c.querySelector('.cp');
+    navigator.clipboard.writeText(c.querySelector('.t').textContent);
+    b.textContent='copied'; b.classList.add('done');
+    setTimeout(()=>{b.textContent='copy';b.classList.remove('done')},1000);
+}
 
-    function copyAll() {
-        const btn = document.querySelector('.copy-all');
-        const entries = document.querySelectorAll('.entry .text');
-        const all = Array.from(entries).reverse().map(e => e.textContent).join('\n');
-        navigator.clipboard.writeText(all);
-        btn.classList.add('copied');
-        btn.textContent = 'copied';
-        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy all'; }, 1500);
-    }
-
-    function del(e, i) {
-        e.stopPropagation();
-        deleted.add(i);
-        const el = document.getElementById('e' + i);
-        el.style.opacity = '0';
-        setTimeout(() => el.remove(), 200);
-    }
-
-    async function askAi(e, i) {
-        e.stopPropagation();
-        const text = document.getElementById('e' + i).querySelector('.text').textContent;
-        openAi(text);
-    }
-
-    async function openAi(text) {
-        if (streamCtrl) streamCtrl.abort();
-        streamCtrl = new AbortController();
-        const overlay = document.getElementById('modal');
-        const content = document.getElementById('aiContent');
-        overlay.classList.add('show');
-        content.innerHTML = '<div class="status loading">thinking...</div><div id="out"></div>';
-        const out = document.getElementById('out');
-
-        try {
-            const res = await fetch('/ask_ai_stream', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text }),
-                signal: streamCtrl.signal
-            });
-            const reader = res.body.getReader();
-            const dec = new TextDecoder();
-            let buf = '';
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) { document.querySelector('.status').textContent = 'done'; break; }
-                buf += dec.decode(value, { stream: true });
-                const lines = buf.split('\n');
-                buf = lines.pop() || '';
-                for (const l of lines) {
-                    if (l.startsWith('data: ')) {
-                        const d = l.slice(6);
-                        if (d === '[DONE]') continue;
-                        try {
-                            const p = JSON.parse(d);
-                            if (p.chunk) out.innerHTML += p.chunk;
-                        } catch { out.innerHTML += d; }
-                    }
-                }
-                content.scrollTop = content.scrollHeight;
-            }
-        } catch (e) {
-            if (e.name !== 'AbortError') out.innerHTML = '<span style="color:red">error</span>';
-        }
-    }
-
-    function closeModal() {
-        if (streamCtrl) { streamCtrl.abort(); streamCtrl = null; }
-        document.getElementById('modal').classList.remove('show');
-    }
-
-    document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-    setInterval(fetchTranscript, 1000);
+function copyAll(btn){
+    if(!allTexts.length) return;
+    navigator.clipboard.writeText(allTexts.join('\n\n'));
+    btn.textContent='copied!'; btn.classList.add('done');
+    setTimeout(()=>{btn.textContent='copy all';btn.classList.remove('done')},1500);
+}
 </script>
 </body>
 </html>

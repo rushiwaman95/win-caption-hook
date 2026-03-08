@@ -1,253 +1,153 @@
 from pywinauto import Desktop
-from flask import Flask, render_template, jsonify, request, Response
+from flask import Flask, render_template, jsonify
 import threading
-import json
 import socket
 import logging
 import time
 import re
 import warnings
-import os
 
-# Suppress warnings from google.generativeai about deprecation
-warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
-warnings.filterwarnings("ignore", category=UserWarning, module="google.generativeai")
+warnings.filterwarnings("ignore")
 
-import google.generativeai as genai
-from itertools import cycle 
-
-# Disable Flask logs
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
-# --- 🧠 AI CONFIGURATION ---
+# ─── STORAGE ───
+CARDS = []               # finalized card texts
+LIVE_TEXT = ""            # current streaming text
+LAST_CHANGE = 0          # timestamp of last LIVE_TEXT change
+SAVED_ALL = ""           # all card text joined (for overlap detection)
+LAST_FINALIZED = ""      # prevent re-firing on same text
+LOCK = threading.Lock()
 
-key_pool = None
-WORKING_MODEL_NAME = "gemini-3-flash-preview"
-
-# Shorter prompt = faster first token
-SYSTEM_PROMPT = """You are an AWS DevOps expert helping with interview prep.
-Rules: Be concise. Use HTML: <ul><li> for lists, <b> for key terms. Max 5 points."""
-
-def setup_keys():
-    global key_pool
-    print("\n" + "="*50)
-    print("      🔑 GEMINI API KEY SETUP      ")
-    print("="*50 + "\n")
-    
-    while True:
-        try:
-            count = int(input("How many Gemini API keys do you have? "))
-            if count > 0:
-                break
-            print("Please enter a number greater than 0.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
-            
-    api_keys = []
-    for i in range(count):
-        while True:
-            key = input(f"Enter API Key #{i+1}: ").strip()
-            if key:
-                api_keys.append(key)
-                break
-            print("Key cannot be empty.")
-            
-    key_pool = cycle(api_keys)
-    print("\n✅ Keys configured successfully!\n")
+SILENCE_SEC = 5
 
 
-# 🚀 NEW: Streaming AI Response
-@app.route('/ask_ai_stream', methods=['POST'])
-def ask_ai_stream():
-    data = request.json
-    text = data.get('text', '')
-    
-    if not text:
-        return Response("data: {\"error\": \"No text\"}\n\n", mimetype='text/event-stream')
-    
-    def generate():
-        global key_pool, WORKING_MODEL_NAME
-        
-        if key_pool is None:
-            yield f"data: {json.dumps({'error': 'API keys not configured'})}\n\n"
-            return
-        
-        current_key = next(key_pool)
-        print(f"🔑 Using Key: ...{current_key[-6:]}")
-        
-        try:
-            genai.configure(api_key=current_key)
-            model = genai.GenerativeModel(WORKING_MODEL_NAME)
-            
-            prompt = f"{SYSTEM_PROMPT}\n\nQuestion: {text}"
-            
-            # 🚀 STREAMING: stream=True
-            response = model.generate_content(prompt, stream=True)
-            
-            for chunk in response:
-                if chunk.text:
-                    yield f"data: {json.dumps({'chunk': chunk.text})}\n\n"
-            
-            yield "data: [DONE]\n\n"
-            
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return Response(generate(), mimetype='text/event-stream', headers={
-        'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no'
-    })
+def normalize(s):
+    return re.sub(r'\s+', ' ', s.strip())
 
 
-# Fallback non-streaming endpoint
-def get_ai_response(user_text):
-    global WORKING_MODEL_NAME, key_pool
-    
-    if key_pool is None:
-        return "Error: API keys not configured."
-    
-    current_key = next(key_pool)
-    print(f"🔑 Using Key: ...{current_key[-6:]}") 
-    
-    try:
-        genai.configure(api_key=current_key)
-        prompt = f"{SYSTEM_PROMPT}\n\nQuestion: {user_text}"
-        model = genai.GenerativeModel(WORKING_MODEL_NAME)
-        response = model.generate_content(prompt)
-        return response.text
-        
-    except Exception as e:
-        print(f"❌ AI Error: {e}")
-        return f"<span style='color:red'>Error: {str(e)}</span>"
+def find_new_portion(current, saved):
+    """
+    Find where the tail of `saved` overlaps the head of `current`,
+    return only the NEW tail of `current`.
+
+    saved : "Hello how are you"
+    curr  : "how are you I am fine"
+    overlap: "how are you"  (3 words)
+    return : "I am fine"
+    """
+    curr = normalize(current)
+    if not curr:
+        return ""
+    if not saved:
+        return curr
+
+    saved_words = saved.lower().split()[-200:]   # only check recent history
+    curr_words  = curr.split()
+    curr_lower  = [w.lower() for w in curr_words]
+
+    max_check = min(len(saved_words), len(curr_lower))
+
+    for length in range(max_check, 0, -1):
+        if saved_words[-length:] == curr_lower[:length]:
+            return ' '.join(curr_words[length:]).strip()
+
+    return curr   # no overlap found → everything is new
 
 
-# -----------------------------------------
-
-# Storage
-TRANSCRIPT_SENTENCES = []
-SEEN_FINGERPRINTS = set()
-LAST_WINDOW_TEXT = ""
-
-
+# ─── ROUTES ───
 @app.route('/')
 def home():
     return render_template('index.html')
 
 
-@app.route('/get_caption')
-def get_caption():
-    return jsonify({'sentences': TRANSCRIPT_SENTENCES})
+@app.route('/stream')
+def stream():
+    with LOCK:
+        display_live = find_new_portion(LIVE_TEXT, SAVED_ALL) if LIVE_TEXT else ""
+        return jsonify({
+            'current': display_live,
+            'cards': list(CARDS)
+        })
 
 
-@app.route('/ask_ai', methods=['POST'])
-def ask_ai_route():
-    data = request.json
-    text = data.get('text', '')
-    if not text:
-        return jsonify({'answer': 'No text selected.'})
-    
-    answer = get_ai_response(text)
-    return jsonify({'answer': answer})
+# ─── CAPTURE THREAD ───
+def capture():
+    global LIVE_TEXT, LAST_CHANGE
 
-
-def normalize(text):
-    text = text.lower().strip()
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[^\w\s]', '', text)
-    return text
-
-
-def get_fingerprint(sentence):
-    return normalize(sentence)[:50]
-
-
-def is_duplicate(sentence):
-    fp = get_fingerprint(sentence)
-    
-    if fp in SEEN_FINGERPRINTS:
-        return True
-    
-    norm = normalize(sentence)
-    for existing in TRANSCRIPT_SENTENCES[-20:]:
-        existing_norm = normalize(existing)
-        if norm in existing_norm or existing_norm in norm:
-            if len(norm) <= len(existing_norm):
-                return True
-    
-    return False
-
-
-def capture_captions():
-    global LAST_WINDOW_TEXT
-    
-    print("--- Searching for 'Live captions' window ---")
+    print("🔍 Looking for Live Captions...")
     desktop = Desktop(backend="uia")
-    
-    caption_window = None
-    
-    while caption_window is None:
+
+    win = None
+    while win is None:
         try:
-            caption_window = desktop.window(title="Live Captions")
-            print("✓ Found 'Live Captions' window!")
+            win = desktop.window(title="Live Captions")
+            print("✅ Found!")
         except:
-            print("⏳ Waiting... (Press Win+Ctrl+L)")
-            time.sleep(2)
-    
-    print("--- Transcript Started ---")
-    
+            print("⏳ Press Win+Ctrl+L to start Live Captions")
+            time.sleep(1)
+
+    print("🎤 Streaming...\n")
+    prev_text = ""
+
     while True:
         try:
-            text_elements = caption_window.descendants(control_type="Text")
+            elements = win.descendants(control_type="Text")
             parts = []
-            
-            for t in text_elements:
-                txt = t.window_text()
-                if txt and txt != "Live Captions":
-                    parts.append(txt)
-            
+            for el in elements:
+                t = el.window_text()
+                if t and t.strip() and t.strip() != "Live Captions":
+                    parts.append(t.strip())
+
             if not parts:
-                time.sleep(2)
+                time.sleep(0.05)
                 continue
-            
-            current_text = " ".join(parts).strip()
-            
-            if current_text == LAST_WINDOW_TEXT:
-                time.sleep(2)
+
+            raw = " ".join(parts).strip()
+
+            if raw == prev_text:
+                time.sleep(0.05)
                 continue
-            
-            LAST_WINDOW_TEXT = current_text
-            
-            sentences = re.split(r'(?<=[.!?])\s+', current_text)
-            
-            for sentence in sentences:
-                sentence = sentence.strip()
-                
-                if len(sentence) < 30:
-                    continue
-                
-                if not re.search(r'[.!?]$', sentence):
-                    continue
-                
-                if is_duplicate(sentence):
-                    continue
-                
-                fp = get_fingerprint(sentence)
-                SEEN_FINGERPRINTS.add(fp)
-                TRANSCRIPT_SENTENCES.append(sentence)
-                print(f"✓ {sentence[:60]}...")
-                
-        except:
-            print("Reconnecting...(Press Win+Ctrl+L)")
+
+            prev_text = raw
+
+            with LOCK:
+                LIVE_TEXT = raw
+                LAST_CHANGE = time.time()
+
+        except Exception as e:
+            print(f"⚠️ Reconnecting... {str(e)[:30]}")
             try:
-                caption_window = desktop.window(title="Live Captions")
+                win = desktop.window(title="Live Captions")
             except:
                 pass
-            
-        time.sleep(2)
+            time.sleep(0.3)
+
+        time.sleep(0.05)
+
+
+# ─── SILENCE DETECTOR THREAD ───
+def silence_detector():
+    global LAST_FINALIZED, SAVED_ALL, LIVE_TEXT
+
+    while True:
+        with LOCK:
+            if LIVE_TEXT and LIVE_TEXT != LAST_FINALIZED:
+                if time.time() - LAST_CHANGE >= SILENCE_SEC:
+                    new_part = find_new_portion(LIVE_TEXT, SAVED_ALL)
+
+                    if new_part and len(new_part) >= 3:
+                        CARDS.append(new_part)
+                        SAVED_ALL = (SAVED_ALL + ' ' + new_part).strip() \
+                                    if SAVED_ALL else new_part
+                        print(f"📝 Card: {new_part[:80]}")
+
+                    LAST_FINALIZED = LIVE_TEXT
+                    LIVE_TEXT = ""          # clear → live card disappears
+        time.sleep(0.5)
 
 
 def get_ip():
@@ -262,7 +162,8 @@ def get_ip():
 
 
 if __name__ == '__main__':
-    setup_keys()
-    threading.Thread(target=capture_captions, daemon=True).start()
-    print(f"Open: http://{get_ip()}:5000")
+    threading.Thread(target=capture, daemon=True).start()
+    threading.Thread(target=silence_detector, daemon=True).start()
+    ip = get_ip()
+    print(f"\n  🚀 http://{ip}:5000\n")
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
