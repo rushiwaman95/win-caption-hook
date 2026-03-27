@@ -1,23 +1,43 @@
 {
   "manifest_version": 3,
-  "name": "Ask Gemini - Sidebar",
-  "version": "1.0",
-  "description": "Select text and ask Gemini in sidebar",
-  "permissions": ["storage", "activeTab", "system.display"],
+  "name": "Ask Qwen - Side Panel (AWS DevOps)",
+  "description": "Select text and ask Qwen with AWS DevOps prompt.",
+  "version": "1.1",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "exclude_matches": ["https://gemini.google.com/*"],
       "js": ["content.js"],
-      "css": ["popup.css"]
+      "css": ["popup.css"],
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
-      "matches": ["https://gemini.google.com/*"],
-      "js": ["gemini-inject.js"],
-      "run_at": "document_idle"
+      "matches": ["https://chat.qwen.ai/*"],
+      "js": ["injectQwen.js"],
+      "run_at": "document_start",
+      "all_frames": true
     }
-  ]
+  ],
+  "icons": {
+    "16": "images/icon16.png",
+    "32": "images/icon32.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "action": {}
 }
