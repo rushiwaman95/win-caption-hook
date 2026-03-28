@@ -15,47 +15,22 @@ log.setLevel(logging.ERROR)
 app = Flask(__name__)
 
 # ─── STORAGE ───
-CARDS = []               # finalized card texts
-LIVE_TEXT = ""            # current streaming text
-LAST_CHANGE = 0          # timestamp of last LIVE_TEXT change
-SAVED_ALL = ""           # all card text joined (for overlap detection)
-LAST_FINALIZED = ""      # prevent re-firing on same text
+CARDS = []
+LIVE_TEXT = ""
 LOCK = threading.Lock()
 
-SILENCE_SEC = 5
+# sentence tracking
+STABLE_SENTENCES = []      # sentences confirmed stable
+LAST_SENTENCES = []        # last seen sentence list
+LAST_CHANGE_TIME = 0       # when LAST_SENTENCES last changed
+FINALIZED_COUNT = 0        # how many sentences already turned into cards
+
+STABLE_WAIT = 1.5          # seconds a sentence must stay unchanged
 
 
-def normalize(s):
-    return re.sub(r'\s+', ' ', s.strip())
-
-
-def find_new_portion(current, saved):
-    """
-    Find where the tail of `saved` overlaps the head of `current`,
-    return only the NEW tail of `current`.
-
-    saved : "Hello how are you"
-    curr  : "how are you I am fine"
-    overlap: "how are you"  (3 words)
-    return : "I am fine"
-    """
-    curr = normalize(current)
-    if not curr:
-        return ""
-    if not saved:
-        return curr
-
-    saved_words = saved.lower().split()[-200:]   # only check recent history
-    curr_words  = curr.split()
-    curr_lower  = [w.lower() for w in curr_words]
-
-    max_check = min(len(saved_words), len(curr_lower))
-
-    for length in range(max_check, 0, -1):
-        if saved_words[-length:] == curr_lower[:length]:
-            return ' '.join(curr_words[length:]).strip()
-
-    return curr   # no overlap found → everything is new
+def get_tail(text):
+    m = list(re.finditer(r'[.!?]', text))
+    return text[m[-1].end():].strip() if m else text.strip()
 
 
 # ─── ROUTES ───
@@ -67,16 +42,23 @@ def home():
 @app.route('/stream')
 def stream():
     with LOCK:
-        display_live = find_new_portion(LIVE_TEXT, SAVED_ALL) if LIVE_TEXT else ""
+        # live = any stable sentences not yet carded + incomplete tail
+        pending = STABLE_SENTENCES[FINALIZED_COUNT:]
+        parts = list(pending)
+        if LIVE_TEXT:
+            tail = get_tail(LIVE_TEXT)
+            if tail:
+                parts.append(tail)
         return jsonify({
-            'current': display_live,
-            'cards': list(CARDS)
+            'current': ' '.join(parts).strip(),
+            'cards': list(CARDS),
+            'count': len(CARDS)
         })
 
 
 # ─── CAPTURE THREAD ───
 def capture():
-    global LIVE_TEXT, LAST_CHANGE
+    global LIVE_TEXT
 
     print("🔍 Looking for Live Captions...")
     desktop = Desktop(backend="uia")
@@ -116,7 +98,6 @@ def capture():
 
             with LOCK:
                 LIVE_TEXT = raw
-                LAST_CHANGE = time.time()
 
         except Exception as e:
             print(f"⚠️ Reconnecting... {str(e)[:30]}")
@@ -129,25 +110,39 @@ def capture():
         time.sleep(0.05)
 
 
-# ─── SILENCE DETECTOR THREAD ───
-def silence_detector():
-    global LAST_FINALIZED, SAVED_ALL, LIVE_TEXT
+# ─── SENTENCE DETECTOR THREAD ───
+def sentence_detector():
+    global LAST_SENTENCES, LAST_CHANGE_TIME, FINALIZED_COUNT
 
     while True:
         with LOCK:
-            if LIVE_TEXT and LIVE_TEXT != LAST_FINALIZED:
-                if time.time() - LAST_CHANGE >= SILENCE_SEC:
-                    new_part = find_new_portion(LIVE_TEXT, SAVED_ALL)
+            if LIVE_TEXT:
+                # extract complete sentences from current text
+                found = re.findall(r'[^.!?]+[.!?]', LIVE_TEXT)
+                current = [s.strip() for s in found if len(s.strip()) >= 5]
 
-                    if new_part and len(new_part) >= 3:
-                        CARDS.append(new_part)
-                        SAVED_ALL = (SAVED_ALL + ' ' + new_part).strip() \
-                                    if SAVED_ALL else new_part
-                        print(f"📝 Card: {new_part[:80]}")
+                # did the sentence list change?
+                if current != LAST_SENTENCES:
+                    LAST_SENTENCES = current
+                    LAST_CHANGE_TIME = time.time()
+                else:
+                    # stable long enough? lock in ALL current complete sentences
+                    if current and time.time() - LAST_CHANGE_TIME >= STABLE_WAIT:
+                        # add any new stable sentences
+                        for s in current:
+                            if s not in STABLE_SENTENCES:
+                                STABLE_SENTENCES.append(s)
 
-                    LAST_FINALIZED = LIVE_TEXT
-                    LIVE_TEXT = ""          # clear → live card disappears
-        time.sleep(0.5)
+                        # make cards from pairs
+                        while len(STABLE_SENTENCES) - FINALIZED_COUNT >= 2:
+                            s1 = STABLE_SENTENCES[FINALIZED_COUNT]
+                            s2 = STABLE_SENTENCES[FINALIZED_COUNT + 1]
+                            card = (s1 + ' ' + s2).strip()
+                            CARDS.append(card)
+                            FINALIZED_COUNT += 2
+                            print(f"📝 Card: {card[:80]}")
+
+        time.sleep(0.3)
 
 
 def get_ip():
@@ -163,7 +158,7 @@ def get_ip():
 
 if __name__ == '__main__':
     threading.Thread(target=capture, daemon=True).start()
-    threading.Thread(target=silence_detector, daemon=True).start()
+    threading.Thread(target=sentence_detector, daemon=True).start()
     ip = get_ip()
     print(f"\n  🚀 http://{ip}:5000\n")
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

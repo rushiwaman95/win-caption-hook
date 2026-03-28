@@ -50,7 +50,7 @@
         @media(max-width:600px){.card .cp{opacity:1}}
         .card .cp.done{color:#4CAF50;border-color:#4CAF50}
         @keyframes fadeIn{
-            from{opacity:0;transform:translateY(-6px)}
+            from{opacity:0;transform:translateY(6px)}
             to{opacity:1;transform:translateY(0)}
         }
         .card.active{
@@ -98,62 +98,96 @@
     <button onclick="copyAll(this)">copy all</button>
 </div>
 <script>
-let rendered=0;
-let allTexts=[];
+let rendered = 0;
+let allTexts = [];
+let wasAtBottom = true;
 
-function esc(s){
+function esc(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-setInterval(()=>{
-    fetch('/stream').then(r=>r.json()).then(d=>{
-        updateCurrent(d.current||'');
-        updateCards(d.cards||[]);
-    }).catch(()=>{});
-},200);
+function isNearBottom() {
+    return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 100);
+}
 
-function updateCurrent(text){
-    let el=document.getElementById('current');
-    if(text){
-        const e=document.getElementById('empty'); if(e) e.remove();
-        if(el) el.textContent=text;
-        else document.getElementById('cards').insertAdjacentHTML('afterbegin',
-            '<div class="card active" id="current">'+esc(text)+'</div>');
+setInterval(() => {
+    wasAtBottom = isNearBottom();
+    fetch('/stream').then(r => r.json()).then(d => {
+        updateCards(d.cards || []);
+        updateCurrent(d.current || '');
+    }).catch(() => {});
+}, 200);
+
+function updateCards(cards) {
+    if (cards.length <= rendered) return;
+    const e = document.getElementById('empty');
+    if (e) e.remove();
+    const container = document.getElementById('cards');
+
+    for (let i = rendered; i < cards.length; i++) {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.id = 'c' + i;
+        div.innerHTML =
+            '<button class="cp" onclick="cpCard(event,' + i + ')">copy</button>' +
+            '<span class="t">' + esc(cards[i]) + '</span>';
+
+        const cur = document.getElementById('current');
+        if (cur) {
+            container.insertBefore(div, cur);
+        } else {
+            container.appendChild(div);
+        }
+    }
+
+    allTexts = cards;
+    rendered = cards.length;
+    document.getElementById('count').textContent =
+        rendered + ' card' + (rendered !== 1 ? 's' : '');
+
+    if (wasAtBottom) {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+}
+
+function updateCurrent(text) {
+    let el = document.getElementById('current');
+    if (text) {
+        const e = document.getElementById('empty');
+        if (e) e.remove();
+        if (el) {
+            el.textContent = text;
+        } else {
+            const div = document.createElement('div');
+            div.className = 'card active';
+            div.id = 'current';
+            div.textContent = text;
+            document.getElementById('cards').appendChild(div);
+        }
+        if (wasAtBottom) {
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
     } else {
-        if(el) el.remove();
+        if (el) el.remove();
     }
 }
 
-function updateCards(cards){
-    if(cards.length<=rendered) return;
-    const e=document.getElementById('empty'); if(e) e.remove();
-    for(let i=rendered;i<cards.length;i++){
-        const h='<div class="card" id="c'+i+'">'+
-            '<button class="cp" onclick="cpCard(event,'+i+')">copy</button>'+
-            '<span class="t">'+esc(cards[i])+'</span></div>';
-        const cur=document.getElementById('current');
-        if(cur) cur.insertAdjacentHTML('afterend',h);
-        else document.getElementById('cards').insertAdjacentHTML('afterbegin',h);
-    }
-    allTexts=cards;
-    rendered=cards.length;
-    document.getElementById('count').textContent=rendered+' card'+(rendered!==1?'s':'');
-}
-
-function cpCard(e,i){
+function cpCard(e, i) {
     e.stopPropagation();
-    const c=document.getElementById('c'+i);
-    const b=c.querySelector('.cp');
+    const c = document.getElementById('c' + i);
+    const b = c.querySelector('.cp');
     navigator.clipboard.writeText(c.querySelector('.t').textContent);
-    b.textContent='copied'; b.classList.add('done');
-    setTimeout(()=>{b.textContent='copy';b.classList.remove('done')},1000);
+    b.textContent = 'copied';
+    b.classList.add('done');
+    setTimeout(() => { b.textContent = 'copy'; b.classList.remove('done'); }, 1000);
 }
 
-function copyAll(btn){
-    if(!allTexts.length) return;
+function copyAll(btn) {
+    if (!allTexts.length) return;
     navigator.clipboard.writeText(allTexts.join('\n\n'));
-    btn.textContent='copied!'; btn.classList.add('done');
-    setTimeout(()=>{btn.textContent='copy all';btn.classList.remove('done')},1500);
+    btn.textContent = 'copied!';
+    btn.classList.add('done');
+    setTimeout(() => { btn.textContent = 'copy all'; btn.classList.remove('done'); }, 1500);
 }
 </script>
 </body>
