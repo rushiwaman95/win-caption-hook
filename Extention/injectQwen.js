@@ -1,90 +1,155 @@
-console.log("Content script (injectQwen.js) initialized in Qwen iframe.");
+console.log("injectQwen.js initialized");
 
-// Listen for messages from the parent sidepanel.js script
-window.addEventListener("message", async (event) => {
-    // Important: Validate the origin for security!
-    if (event.origin !== "chrome-extension://" + chrome.runtime.id) {
-        console.log("Message origin mismatch, ignoring:", event.origin);
+window.addEventListener("message", async function (event) {
+    try {
+        if (event.origin !== "chrome-extension://" + chrome.runtime.id) return;
+    } catch (e) {
         return;
     }
 
-    console.log("Received message in iframe:", event.data);
-
     if (event.data.type === "ASK_QWEN_WITH_PROMPT") {
-        const promptText = event.data.text;
-        console.log("Received ASK_QWEN_WITH_PROMPT command with text:", promptText.substring(0, 50) + "...");
-
-        // Function to wait for the input area to be available
-        const waitForInput = (timeout = 15000) => {
-            return new Promise((resolve, reject) => {
-                const startTime = Date.now();
-                const check = () => {
-                    // Try common selectors for Qwen's input area
-                    const inputSelector = 'textarea[placeholder*="message" i], textarea[placeholder*="Message" i], [contenteditable="true"].text-input, textarea';
-                    const inputArea = document.querySelector(inputSelector);
-                    
-                    if (inputArea) {
-                        resolve(inputArea);
-                    } else if (Date.now() - startTime >= timeout) {
-                        reject(new Error(`Input area not found within ${timeout}ms`));
-                    } else {
-                        setTimeout(check, 500);
-                    }
-                };
-                check();
-            });
-        };
+        var promptText = event.data.text;
+        console.log("Received prompt:", promptText.substring(0, 50) + "...");
 
         try {
-            const inputArea = await waitForInput();
-            console.log("Found input area:", inputArea);
+            var inputArea = await waitForInput();
+            console.log("Found input:", inputArea.tagName);
 
-            // Clear the input area (optional, might help start a new conversation segment)
-            // Note: Clearing might be tricky depending on how Qwen handles its input
-            // A safer approach is often just appending/prepending, but for a new query, clearing is ideal if possible.
-            // Let's try focusing and replacing value first.
             inputArea.focus();
-            if (inputArea.tagName === 'TEXTAREA' || inputArea.tagName === 'INPUT') {
-                 // Method 1: Set value and dispatch input
-                 inputArea.value = promptText;
-                 inputArea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                 // Optional: Dispatch change event too
-                 inputArea.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-                 
+            await sleep(300);
+
+            if (inputArea.tagName === "TEXTAREA" || inputArea.tagName === "INPUT") {
+                // Clear first
+                inputArea.value = "";
+                inputArea.dispatchEvent(new Event("input", { bubbles: true }));
+                await sleep(100);
+                // Set value
+                inputArea.value = promptText;
+                inputArea.dispatchEvent(new Event("input", { bubbles: true }));
+                inputArea.dispatchEvent(new Event("change", { bubbles: true }));
             } else if (inputArea.isContentEditable) {
-                 // Method 2: For contenteditable divs
-                 inputArea.textContent = promptText; // Or innerHTML if needed, be careful with XSS
-                 // Dispatch input event for contenteditable
-                 inputArea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: promptText }));
+                inputArea.textContent = "";
+                await sleep(100);
+                inputArea.textContent = promptText;
+                inputArea.dispatchEvent(new InputEvent("input", {
+                    bubbles: true,
+                    inputType: "insertText",
+                    data: promptText
+                }));
             } else {
-                 // Fallback: try setting innerText
-                 inputArea.innerText = promptText;
-                 inputArea.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                inputArea.innerText = promptText;
+                inputArea.dispatchEvent(new InputEvent("input", { bubbles: true }));
             }
 
-            console.log("Prompt inserted into input area.");
+            console.log("Prompt inserted");
+            await sleep(800);
 
-            // Find and click the send button
-            const sendButtonSelector = 'button[aria-label*="send" i], button[aria-label*="Send" i], button[type="submit"], .send-button, [data-testid*="send"]';
-            const sendButton = document.querySelector(sendButtonSelector);
+            // Try multiple ways to send
+            var sent = false;
 
-            if (sendButton) {
-                console.log("Found send button, attempting to click.");
-                // Simulate a click on the send button
-                sendButton.click();
-            } else {
-                console.warn("Send button not found using common selectors. Trying Enter key in input.");
-                // Fallback: Simulate pressing Enter in the input area
-                inputArea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            // Method 1: Find send button by multiple selectors
+            var sendBtn = findSendBtn();
+            if (sendBtn) {
+                console.log("Found send button, clicking");
+                sendBtn.click();
+                sent = true;
+            }
+
+            // Method 2: Enter key on textarea
+            if (!sent) {
+                console.log("Trying Enter key");
+                inputArea.dispatchEvent(new KeyboardEvent("keydown", {
+                    key: "Enter", code: "Enter", keyCode: 13,
+                    which: 13, bubbles: true
+                }));
+                inputArea.dispatchEvent(new KeyboardEvent("keypress", {
+                    key: "Enter", code: "Enter", keyCode: 13,
+                    which: 13, bubbles: true
+                }));
+                inputArea.dispatchEvent(new KeyboardEvent("keyup", {
+                    key: "Enter", code: "Enter", keyCode: 13,
+                    which: 13, bubbles: true
+                }));
             }
 
         } catch (error) {
-            console.error("Error filling input or sending:", error);
-            // Potentially notify the sidepanel.js script about the failure
-             chrome.runtime.sendMessage({
-                type: "SIDEPANEL_INJECT_ERROR",
-                error: error.message
-            }).catch(e => console.error("Could not send error back to side panel:", e));
+            console.error("Error:", error);
+            try {
+                chrome.runtime.sendMessage({
+                    type: "SIDEPANEL_INJECT_ERROR",
+                    error: error.message
+                });
+            } catch (e) {}
         }
     }
 });
+
+function sleep(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+}
+
+function waitForInput(timeout) {
+    timeout = timeout || 15000;
+    return new Promise(function (resolve, reject) {
+        var start = Date.now();
+        var check = function () {
+            var el =
+                document.querySelector("textarea") ||
+                document.querySelector('[contenteditable="true"]') ||
+                document.querySelector('textarea[placeholder*="message" i]') ||
+                document.querySelector(".ql-editor");
+            if (el) {
+                resolve(el);
+            } else if (Date.now() - start >= timeout) {
+                reject(new Error("Input not found"));
+            } else {
+                setTimeout(check, 500);
+            }
+        };
+        check();
+    });
+}
+
+function findSendBtn() {
+    // Try many selectors — Qwen changes their UI frequently
+    var selectors = [
+        'button[type="submit"]',
+        'button[aria-label*="send" i]',
+        'button[aria-label*="Send"]',
+        '[data-testid*="send"]',
+        '.send-button',
+        'button.chat-send',
+        // SVG icon buttons (common in chat UIs)
+        'button svg[viewBox] ~ span',
+    ];
+
+    for (var i = 0; i < selectors.length; i++) {
+        var el = document.querySelector(selectors[i]);
+        if (el) {
+            // If we found an element inside button, get the button
+            var btn = el.closest("button") || el;
+            if (btn.tagName === "BUTTON") return btn;
+        }
+    }
+
+    // Fallback: find button with send-like icon or text
+    var buttons = document.querySelectorAll("button");
+    for (var j = 0; j < buttons.length; j++) {
+        var b = buttons[j];
+        var label = (b.getAttribute("aria-label") || "") +
+                    (b.textContent || "");
+        if (label.toLowerCase().match(/send|submit|arrow/)) {
+            return b;
+        }
+        // Check for SVG arrow icon (very common send button)
+        if (b.querySelector("svg") && !b.textContent.trim()) {
+            var rect = b.getBoundingClientRect();
+            // Small button near bottom-right is likely send
+            if (rect.width < 60 && rect.bottom > window.innerHeight - 100) {
+                return b;
+            }
+        }
+    }
+
+    return null;
+}
