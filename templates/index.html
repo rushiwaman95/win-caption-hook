@@ -31,6 +31,11 @@
             -webkit-user-select:text;
             user-select:text;
             cursor:pointer;
+            transition:all .1s;
+        }
+        .card:active{
+            background:#1a1a1a;
+            transform:scale(0.98);
         }
         .card .cp{
             position:absolute;
@@ -116,7 +121,7 @@ setInterval(() => {
         updateCards(d.cards || []);
         updateCurrent(d.current || '');
     }).catch(() => {});
-}, 200);
+}, 100);
 
 function updateCards(cards) {
     if (cards.length <= rendered) return;
@@ -131,6 +136,11 @@ function updateCards(cards) {
         div.innerHTML =
             '<button class="cp" onclick="cpCard(event,' + i + ')">copy</button>' +
             '<span class="t">' + esc(cards[i]) + '</span>';
+        div.onclick = (e) => {
+            if (e.target.className !== 'cp') {
+                injectToGPT(cards[i]);
+            }
+        };
 
         const cur = document.getElementById('current');
         if (cur) {
@@ -146,7 +156,7 @@ function updateCards(cards) {
         rendered + ' card' + (rendered !== 1 ? 's' : '');
 
     if (wasAtBottom) {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        window.scrollTo(0, document.body.scrollHeight);
     }
 }
 
@@ -165,7 +175,7 @@ function updateCurrent(text) {
             document.getElementById('cards').appendChild(div);
         }
         if (wasAtBottom) {
-            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            window.scrollTo(0, document.body.scrollHeight);
         }
     } else {
         if (el) el.remove();
@@ -188,6 +198,12 @@ function copyAll(btn) {
     btn.textContent = 'copied!';
     btn.classList.add('done');
     setTimeout(() => { btn.textContent = 'copy all'; btn.classList.remove('done'); }, 1500);
+}
+
+function injectToGPT(text) {
+    if (window.chrome && chrome.runtime) {
+        chrome.runtime.sendMessage({ action: 'askChatGPT', prompt: text }, () => {});
+    }
 }
 </script>
 </body>

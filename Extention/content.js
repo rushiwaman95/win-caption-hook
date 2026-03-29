@@ -1,197 +1,223 @@
-let btn = null;
-let lastCardClickTime = 0;
+(function () {
+  var CUSTOM_PROMPT =
+    "DEVOPS EXPERT MODE — ACTIVATED\n" +
+    "Answer as a senior DevOps engineer with 10+ years experience.\n" +
+    "Keep 2-3 short bullet points only.\n\n";
 
-const CUSTOM_PROMPT = `DEVOPS EXPERT MODE — ACTIVATED
-Answer as a senior DevOps engineer with 10+ years of experience.
-Keep answers in point to point no big sentence. just keep 2 to 3 short bullet points.
+  var isChatGPT = location.hostname === "chatgpt.com";
 
-\n\n`;
+  if (isChatGPT) {
+    setupChatGPTInjector();
+  } else {
+    setupFloatingButton();
+  }
 
-// ─── BULLETPROOF EXTENSION CHECK ───
-function getRuntime() {
-    try {
-        if (typeof chrome === "undefined") return null;
-        if (typeof chrome.runtime === "undefined") return null;
-        if (!chrome.runtime.id) return null;
-        return chrome.runtime;
-    } catch (e) {
-        return null;
-    }
-}
+  // ════════════════════════════════════════
+  // A. CHATGPT INJECTOR (runs inside iframe)
+  // ════════════════════════════════════════
+  function setupChatGPTInjector() {
+    var injecting = false;
 
-function safeSendMessage(msg) {
-    var rt = getRuntime();
-    if (!rt) return false;
-    try {
-        rt.sendMessage(msg);
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-// ─── INIT ───
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-} else {
-    init();
-}
-
-function init() {
-    document.addEventListener("mouseup", handleMouseUp);
-
-    // ─── CARD CLICK → ASK QWEN ───
-    document.addEventListener("click", function (e) {
-        // Remove floating button if clicking elsewhere
-        if (btn && !btn.contains(e.target)) {
-            removeBtn();
-        }
-
-        var card = e.target.closest(".card");
-        if (!card || e.target.closest(".cp")) return;
-
-        // Debounce
-        var now = Date.now();
-        if (now - lastCardClickTime < 2000) return;
-        lastCardClickTime = now;
-
-        var textSpan = card.querySelector(".t");
-        var text = textSpan
-            ? textSpan.textContent.trim()
-            : card.textContent.replace("copy", "").trim();
-        if (text.length < 3) return;
-
-        // Visual feedback
-        card.style.borderLeft = "3px solid #886aea";
-        card.style.opacity = "0.7";
-        setTimeout(function () {
-            card.style.borderLeft = "";
-            card.style.opacity = "1";
-        }, 2000);
-
-        var sent = safeSendMessage({
-            action: "askQwen",
-            prompt: CUSTOM_PROMPT + '"' + text + '"'
-        });
-
-        if (!sent) {
-            console.log("Qwen extension not available — reload extension & refresh page");
-        }
+    // CHANNEL 1: chrome.storage (primary — most reliable)
+    chrome.storage.local.get(["pendingPrompt", "promptTime"], function (data) {
+      if (data.pendingPrompt && Date.now() - data.promptTime < 60000) {
+        chrome.storage.local.remove(["pendingPrompt", "promptTime"]);
+        waitThenInject(data.pendingPrompt);
+      }
     });
 
-    // ─── LISTEN FOR MESSAGES FROM BACKGROUND ───
-    var rt = getRuntime();
-    if (rt) {
-        try {
-            rt.onMessage.addListener(function (msg) {
-                if (msg.action === "resetAndAsk") {
-                    injectPrompt(msg.prompt);
-                }
-            });
-        } catch (e) {}
+    chrome.storage.onChanged.addListener(function (changes) {
+      if (changes.pendingPrompt && changes.pendingPrompt.newValue) {
+        chrome.storage.local.remove(["pendingPrompt", "promptTime"]);
+        waitThenInject(changes.pendingPrompt.newValue);
+      }
+    });
+
+    // CHANNEL 2: chrome.runtime.onMessage (backup)
+    chrome.runtime.onMessage.addListener(function (msg) {
+      if (msg.action === "injectPrompt") waitThenInject(msg.prompt);
+    });
+
+    // CHANNEL 3: postMessage from sidepanel.js (backup)
+    window.addEventListener("message", function (e) {
+      if (e.data && e.data.type === "DEVOPS_INJECT") waitThenInject(e.data.prompt);
+    });
+
+    function waitThenInject(prompt) {
+      if (injecting) return;
+      injecting = true;
+      setTimeout(function () {
+        doInject(prompt).then(function () { injecting = false; });
+      }, 300);
     }
-}
 
-// ─── TEXT SELECTION → FLOATING BUTTON ───
-function handleMouseUp(e) {
-    setTimeout(function () {
-        if (!getRuntime()) return;
+    async function doInject(prompt) {
+      var editor = await waitForEditor();
+      if (!editor) return;
+      await delay(100);
 
+      editor.focus();
+
+      if (editor.tagName === "TEXTAREA") {
+        // React textarea — use native setter
+        var setter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, "value"
+        ).set;
+        setter.call(editor, prompt);
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        // ProseMirror / contenteditable
+        // Select all existing text, then replace via execCommand
+        var sel = window.getSelection();
+        var range = document.createRange();
+        range.selectNodeContents(editor);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand("insertText", false, prompt);
+      }
+
+      await delay(200);
+      clickSend();
+    }
+
+    function waitForEditor() {
+      return new Promise(function (resolve) {
+        var tries = 0;
+        var iv = setInterval(function () {
+          var el =
+            document.querySelector("#prompt-textarea") ||
+            document.querySelector("textarea") ||
+            document.querySelector('[contenteditable="true"]');
+          if (el || ++tries > 30) {
+            clearInterval(iv);
+            resolve(el || null);
+          }
+        }, 500);
+      });
+    }
+
+    function clickSend() {
+      var btn =
+        document.querySelector('button[data-testid="send-button"]') ||
+        document.querySelector('button[type="submit"]') ||
+        document.querySelector('button[aria-label*="send" i]');
+      if (btn && !btn.disabled) {
+        btn.click();
+      } else {
+        // Retry — button may be enabling
+        setTimeout(function () {
+          var b = document.querySelector('button[data-testid="send-button"]') ||
+                  document.querySelector('button[type="submit"]');
+          if (b) b.click();
+        }, 300);
+      }
+    }
+
+    // Copy enhancement for code blocks
+    document.addEventListener("click", function (e) {
+      var button = e.target.closest("button");
+      if (!button) return;
+      var label = (button.getAttribute("aria-label") || "").toLowerCase();
+      if (!label.includes("copy") || label === "copied") return;
+      var code =
+        button.closest("div") && button.closest("div").querySelector("code");
+      if (code) copyText(code.textContent);
+    }, true);
+  }
+
+  // ════════════════════════════════════
+  // B. FLOATING BUTTON (all other pages)
+  // ════════════════════════════════════
+  function setupFloatingButton() {
+    var btn = null;
+    var lastCardClick = 0;
+
+    // Inject floating button styles
+    var style = document.createElement("style");
+    style.textContent =
+      "#gemin-ask-btn{position:absolute;z-index:2147483647;" +
+      "background:linear-gradient(135deg,#4285f4,#886aea);" +
+      "color:#fff;border:none;border-radius:20px;padding:6px 14px;" +
+      "font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.25);" +
+      "font-family:sans-serif;animation:gfade .15s ease}" +
+      "#gemin-ask-btn:hover{transform:scale(1.05)}" +
+      "@keyframes gfade{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}";
+    document.head.appendChild(style);
+
+    // Text selection → floating button
+    document.addEventListener("mouseup", function (e) {
+      setTimeout(function () {
         var text = window.getSelection().toString().trim();
         removeBtn();
         if (text.length < 2) return;
 
         btn = document.createElement("button");
         btn.id = "gemin-ask-btn";
-        btn.textContent = "✨ Ask Qwen";
-        btn.style.cssText =
-            "position:absolute;z-index:2147483647;" +
-            "background:linear-gradient(135deg,#4285f4,#886aea);" +
-            "color:white;border:none;border-radius:20px;" +
-            "padding:6px 14px;font-size:13px;cursor:pointer;" +
-            "box-shadow:0 2px 10px rgba(0,0,0,0.25);" +
-            "display:flex;align-items:center;gap:6px;" +
-            "font-family:sans-serif;";
-
-        btn.addEventListener("click", function (ev) {
-            ev.stopPropagation();
-            safeSendMessage({
-                action: "askQwen",
-                prompt: CUSTOM_PROMPT + '"' + text + '"'
-            });
-            removeBtn();
-        });
-
+        btn.textContent = "✨ Ask ChatGPT";
+        btn.onclick = function (ev) {
+          ev.stopPropagation();
+          chrome.runtime.sendMessage({
+            action: "askChatGPT",
+            prompt: CUSTOM_PROMPT + '"' + text + '"'
+          });
+          removeBtn();
+        };
         document.body.appendChild(btn);
         btn.style.left = e.pageX + 10 + "px";
         btn.style.top = e.pageY + 10 + "px";
-    }, 100);
-}
-
-function removeBtn() {
-    if (btn) {
-        btn.remove();
-        btn = null;
-    }
-}
-
-// ─── INJECT PROMPT (for Qwen page) ───
-async function injectPrompt(prompt) {
-    var newChatBtn =
-        document.querySelector('button[aria-label*="new chat" i]') ||
-        Array.from(document.querySelectorAll("button")).find(function (b) {
-            return b.textContent.trim().toLowerCase().includes("new chat");
-        });
-    if (newChatBtn) {
-        newChatBtn.click();
-        await new Promise(function (r) { setTimeout(r, 800); });
-    }
-
-    var editor = await waitForEditor();
-    if (!editor) return;
-    await new Promise(function (r) { setTimeout(r, 600); });
-
-    if (editor.tagName === "TEXTAREA") {
-        editor.value = prompt;
-        editor.dispatchEvent(new Event("input", { bubbles: true }));
-    } else {
-        editor.focus();
-        editor.innerText = prompt;
-        editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
-    }
-
-    await new Promise(function (r) { setTimeout(r, 600); });
-    var sendBtn = findSendButton();
-    if (sendBtn) sendBtn.click();
-}
-
-function waitForEditor() {
-    return new Promise(function (resolve) {
-        var interval = setInterval(function () {
-            var el =
-                document.querySelector('textarea[placeholder*="message" i]') ||
-                document.querySelector(".ql-editor") ||
-                document.querySelector('[contenteditable="true"]') ||
-                document.querySelector("textarea");
-            if (el) {
-                clearInterval(interval);
-                resolve(el);
-            }
-        }, 500);
-        setTimeout(function () { clearInterval(interval); resolve(null); }, 15000);
+      }, 100);
     });
-}
 
-function findSendButton() {
-    return (
-        document.querySelector('button[type="submit"]') ||
-        document.querySelector('button[aria-label*="send" i]') ||
-        document.querySelector('[data-testid*="send"]') ||
-        Array.from(document.querySelectorAll("button")).find(function (b) {
-            return (
-                b.textContent.toLowerCase().includes("send") ||
-                (b.getAttribute("aria-label") || "").toLowerCase().includes("send")
-            );
-        })
-    );
-}
+    // Card click
+    document.addEventListener("click", function (e) {
+      if (btn && !btn.contains(e.target)) removeBtn();
+
+      var card = e.target.closest(".card");
+      if (!card || e.target.closest(".cp")) return;
+
+      var now = Date.now();
+      if (now - lastCardClick < 2000) return;
+      lastCardClick = now;
+
+      var textEl = card.querySelector(".t");
+      var text = textEl
+        ? textEl.textContent.trim()
+        : card.textContent.replace("copy", "").trim();
+      if (text.length < 3) return;
+
+      // Visual feedback
+      card.style.borderLeft = "3px solid #886aea";
+      card.style.opacity = "0.7";
+      setTimeout(function () {
+        card.style.borderLeft = "";
+        card.style.opacity = "1";
+      }, 2000);
+
+      chrome.runtime.sendMessage({
+        action: "askChatGPT",
+        prompt: CUSTOM_PROMPT + '"' + text + '"'
+      });
+    });
+
+    function removeBtn() {
+      if (btn) { btn.remove(); btn = null; }
+    }
+  }
+
+  // ════════════════════
+  // SHARED UTILITIES
+  // ════════════════════
+  function copyText(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+
+  function delay(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+  }
+})();

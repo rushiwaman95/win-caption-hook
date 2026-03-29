@@ -1,77 +1,94 @@
 
-# 🎙️ Live Transcript & AI Assistant
+# Win Caption Hook
 
-A powerful, live captioning AI assistant that listens to your system audio (via Windows Live Captions) and provides intelligent, human-like answers using **Google Gemini**.
+A Windows application that captures live system captions and integrates with web-based AI assistants (ChatGPT, Gemini, etc.) through a Flask-powered web dashboard and Chrome extension.
 
 ## 🚀 Features
 
-- **Real-time Transcription**: Hooks into Windows 11 "Live Captions" to read audio in real-time.
-- **AI-Powered Context**: Select any card or transcription segment to ask Google Gemini for context or answers.
-- **Smart API Key Rotation**: Handles multiple API keys to avoid hitting usage limits.
-- **Web Dashboard**: Modern, dark-themed responsive UI accessible from your phone or local network.
+- **Real-time Transcription Capture**: Hooks into Windows Live Captions to capture audio transcription in real-time.
+- **Web Dashboard**: Flask-based responsive UI for managing and analyzing captured captions.
+- **Chrome Extension**: ChatGPT DevOps Panel integration for quick access to AI assistance.
+- **Network Accessible**: Access the dashboard from any device on your local network.
+- **Light-weight**: Minimal resource usage with efficient caption parsing.
 
 ---
 
 ## 📋 System Requirements
 
-- **OS**: Windows 11 (22H2 or later) or Windows 10 (with Live Captions support).
-- **Audio**: A working microphone or system audio routing.
-- **Internet**: Required for Google Gemini API.
+- **OS**: Windows 10/11 with Live Captions support
+- **Python**: Python 3.8+ (for running from source)
+- **Browser**: Chrome/Edge for the web dashboard and extension
+- **Audio**: A working microphone or system audio routing for Live Captions
 
 ---
 
 ## 🛠️ Installation & Setup
 
-### Option 1: Running the Executable (Recommended)
-This is the easiest way to run the application if you don't want to mess with code.
+### Option 1: Running from Source (Recommended for Development)
 
-1. **Locate the EXE**: Go to the `dist` folder in this directory.
-2. **Run**: Double-click `main.exe`.
-3. **Follow On-Screen Instructions**: The app will verify prerequisites.
+1. **Install Python**: Ensure Python 3.8+ is installed.
 
-### Option 2: Running from Source
-If you are a developer or want to modify the code:
-
-1. **Install Python**: Ensure Python 3.10+ is installed.
 2. **Install Dependencies**:
-   Open a terminal in this folder and run:
    ```bash
    pip install -r requirements.txt
    ```
-3. **Run the Script**:
+
+3. **Run the Application**:
    ```bash
    python main.py
    ```
+
+4. **Access the Dashboard**:
+   The console will display the local URL, typically:
+   ```
+   http://localhost:5000
+   ```
+   - **From your PC**: Open `http://localhost:5000` in Chrome/Edge
+   - **From other devices**: Use the network IP shown in console (e.g., `http://192.168.x.x:5000`)
+
+### Option 2: Using the Compiled EXE
+
+1. Locate the EXE in the `dist` folder
+2. Double-click `main.exe` to run
+3. Follow on-screen instructions if any prerequisites are missing
+
+---
+
+## 🔧 Chrome Extension Setup
+
+The `Extension/` folder contains a ChatGPT DevOps Panel Chrome extension.
+
+### Installation Steps:
+1. Open Chrome and go to `chrome://extensions/`
+2. Enable **Developer mode** (top right)
+3. Click **Load unpacked**
+4. Navigate to the `Extension/` folder in this project and select it
+5. The extension will appear in your Chrome toolbar
+
+### Features:
+- Access ChatGPT in a Chrome side panel
+- Integrates with captured captions for quick context
+- DevOps-focused prompt assistance
 
 ---
 
 ## 🚦 How to Use
 
-### 1. Enable Live Captions
-The app relies on the **Windows Live Captions** feature.
-- Press **`Win + Ctrl + L`** on your keyboard.
-- Ensure the Live Captions bar appears (usually at the top or bottom of your screen).
-- If it asks to download a language pack, please do so.
+### 1. Enable Windows Live Captions
+- Press **`Win + Ctrl + L`** to open Live Captions
+- Ensure the Live Captions bar is visible (at top or bottom of screen)
+- Download any required language packs if prompted
+- Play audio (video, music, calls, etc.) to start transcription
 
-### 2. Configure API Keys (First Run)
-On the first launch, the application (console window) will ask for your Google Gemini API Keys.
-- You can get free keys from [Google AI Studio](https://aistudio.google.com/).
-- We recommend adding **at least 2-3 keys** if you plan to use it heavily, but 1 works fine.
-- Answer the prompts in the console window to save your keys.
+### 2. Monitor Captions in Dashboard
+- Open `http://localhost:5000` in your browser
+- Captions will appear as cards in real-time as audio is captured
+- Each completed sentence becomes a card
 
-### 3. Open the Dashboard
-Once running, the console will display a local URL, for example:
-```
-http://192.168.1.5:5000
-```
-- **From your PC**: Open `http://localhost:5000` in Chrome/Edge.
-- **From your Phone**: Ensure your phone is on the **same Wi-Fi**, then open the IP address shown in the console.
-
-### 4. Interacting with the AI
-- **Automatic Transcription**: As audio plays on your PC, cards will appear in the dashboard.
-- **Ask AI**:
-    - **Single Card**: Click the **Star Icon (✧˖)** on any specific card to get context about that sentence.
-    - **Multiple Cards**: Click multiple cards to select them, then click the floating **"Ask AI"** button at the bottom right to analyze all selected text together.
+### 3. Use Chrome Extension (Optional)
+- Click the extension icon in Chrome toolbar
+- Access ChatGPT in the side panel for quick AI assistance
+- Use captured captions as context for your prompts
 
 ---
 
@@ -79,23 +96,57 @@ http://192.168.1.5:5000
 
 | Issue | Solution |
 |-------|----------|
-| **"Waiting for Live Captions..."** | Press `Win + Ctrl + L` to ensure the Live Captions window is open and visible. The app needs it to be running. |
-| **No Text Appearing** | Ensure audio is playing and Live Captions is actually transcribing words. Try playing a YouTube video to test. |
-| **AI Not Responding** | Check your internet connection. Your API keys might be expired or quota exceeded. Restart the app to re-enter keys if needed. |
-| **"DLL load failed" (Source)** | You might be missing C++ redistributables or have an incompatible Python version. Try the EXE version instead. |
+| **"Waiting for Live Captions..."** or no text appearing | Press `Win + Ctrl + L` to ensure Live Captions window is open and active. Try playing audio to test. |
+| **Dashboard not loading** | Verify Flask is running (check console for errors). Try `http://localhost:5000` or the network IP shown in console. |
+| **Extension not appearing** | Ensure Developer mode is enabled in `chrome://extensions/`. Reload the extension if needed. |
+| **Module not found errors** | Run `pip install -r requirements.txt` to install all dependencies. |
+| **Python DLL errors** | Ensure Python 3.8+ is installed and accessible from PATH. |
+
+---
+
+## 📁 Project Structure
+
+```
+win-caption-hook/
+├── main.py                 # Flask web server & caption capture logic
+├── WindowsLiveChecker.py   # Utility to detect Live Captions window
+├── requirements.txt        # Python dependencies
+├── main.spec              # PyInstaller configuration for EXE build
+├── Extension/             # Chrome extension files
+│   ├── manifest.json      # Extension configuration
+│   ├── sidepanel.html     # Extension UI
+│   ├── sidepanel.js       # Extension logic
+│   ├── background.js      # Background service worker
+│   ├── content.js         # Content script
+│   └── images/            # Extension icons
+├── templates/             # Flask HTML templates
+│   └── index.html         # Dashboard UI
+└── LICENSE
+```
 
 ---
 
 ## 🔨 Development Info
 
-- **Backend**: Python (Flask)
-- **GUI Automation**: PyWinAuto (reads the accessibility tree of Windows Live Captions)
-- **Frontend**: HTML5, CSS3, Vanilla JS
-- **AI Model**: Google Gemini 1.5 Flash (via `google-generativeai`)
+- **Backend**: Python with Flask
+- **GUI Automation**: PyWinAuto (reads Windows Live Captions accessibility tree)
+- **Frontend**: HTML5, CSS3, Vanilla JavaScript
+- **Extension**: Chrome Manifest V3
 
-### Build EXE
-To compile the project yourself:
+### Build EXE from Source
 ```bash
 pyinstaller main.spec
 ```
+The compiled EXE will be in the `dist/` folder.
+
+### Dependencies
+- `pywinauto`: Windows UI automation
+- `flask`: Web framework
+- `google-generativeai`: Optional, for Gemini API integration
+
+---
+
+## 📝 License
+
+See [LICENSE](LICENSE) file for details.
 The output will be in the `dist` folder.
