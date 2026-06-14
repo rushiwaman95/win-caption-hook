@@ -1,130 +1,284 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Captions + AI</title>
-    
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Live AI Chat</title>
+
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    
+
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
         :root {
             --bg: #0a0a0a;
-            --bg-input: #161616;
-            --border: #1a1a1a;
-            --text: #e0e0e0;
+            --bg-elevated: #161616;
+            --text: #e6e6e6;
+            --text-dim: #7a7a7a;
             --user-bubble: #1e3a5f;
-            --ai-bubble: #161616;
+            --ai-bubble: #151515;
             --accent: #4CAF50;
             --warning: #ff9800;
+            --info: #2196F3;
             --error: #ff6b6b;
+
+            --sat: env(safe-area-inset-top, 0px);
+            --sab: env(safe-area-inset-bottom, 0px);
+            --sal: env(safe-area-inset-left, 0px);
+            --sar: env(safe-area-inset-right, 0px);
+        }
+
+        html,
+        body {
+            height: 100%;
+            overscroll-behavior-y: none;
+        }
+
+        html {
+            background: var(--bg);
         }
 
         body {
             background: var(--bg);
             color: var(--text);
-            font-family: -apple-system, system-ui, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
             height: 100vh;
+
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
-        .header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        /* ============ Top fade (so content scrolls under floating UI cleanly) ============ */
+        .top-fade {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: calc(54px + var(--sat));
+            background: linear-gradient(to bottom, var(--bg) 35%, transparent);
+            z-index: 40;
+            pointer-events: none;
         }
 
-        .header h1 { 
-            font-size: 18px; 
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .question-counter {
-            font-size: 12px;
-            color: #666;
-            background: #1a1a1a;
-            padding: 4px 10px;
-            border-radius: 12px;
-        }
-
-        .header button {
-            background: #1a1a1a;
-            color: #888;
-            border: 1px solid #333;
-            padding: 6px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
-        .header button:hover {
-            background: #252525;
-            color: #aaa;
-        }
-
-        .status {
-            padding: 12px 20px;
-            border-bottom: 1px solid var(--border);
+        /* ============ Status pill (top-left) ============ */
+        .status-pill {
+            position: fixed;
+            top: calc(10px + var(--sat));
+            left: calc(10px + var(--sal));
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 13px;
-            background: #0d0d0d;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 6px 11px 6px 8px;
+            border-radius: 20px;
+            z-index: 50;
         }
 
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #666;
+            background: var(--accent);
+            flex-shrink: 0;
         }
 
-        .status.listening .status-dot { background: #4CAF50; animation: pulse 2s infinite; }
-        .status.ready .status-dot { background: #ff9800; animation: pulse 1s infinite; }
-        .status.ai_streaming .status-dot { background: #2196F3; }
+        .status-label {
+            font-size: 10px;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        .status-pill.listening .status-dot {
+            animation: pulse 2s infinite;
+        }
+
+        .status-pill.ready .status-dot {
+            background: var(--warning);
+            animation: pulse 1s infinite;
+        }
+
+        .status-pill.ai_streaming .status-dot {
+            background: var(--info);
+            animation: none;
+        }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: .4;
+                transform: scale(.8);
+            }
         }
 
-        .status-text { color: #888; }
-        .status.ready .status-text { color: var(--warning); font-weight: 500; }
+        /* ============ Floating controls (top-right) ============ */
+        .floating-controls {
+            position: fixed;
+            top: calc(8px + var(--sat));
+            right: calc(8px + var(--sar));
+            display: flex;
+            gap: 6px;
+            z-index: 50;
+        }
 
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .icon-btn svg {
+            width: 17px;
+            height: 17px;
+        }
+
+        .icon-btn:active {
+            background: rgba(255, 255, 255, .14);
+            color: #eee;
+        }
+
+        /* ============ Menu dropdown ============ */
+        .menu-dropdown {
+            position: fixed;
+            top: calc(50px + var(--sat));
+            right: calc(8px + var(--sar));
+            background: #171717;
+            border: 1px solid #2b2b2b;
+            border-radius: 14px;
+            padding: 6px;
+            min-width: 180px;
+            z-index: 55;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, .5);
+            opacity: 0;
+            transform: translateY(-6px) scale(.97);
+            pointer-events: none;
+            transition: opacity .15s, transform .15s;
+        }
+
+        .menu-dropdown.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 10px 12px;
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            border-radius: 9px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .menu-item:active {
+            background: rgba(255, 255, 255, .06);
+        }
+
+        .menu-item svg {
+            width: 16px;
+            height: 16px;
+            color: #888;
+            flex-shrink: 0;
+        }
+
+        .menu-divider {
+            height: 1px;
+            background: #2b2b2b;
+            margin: 5px 6px;
+        }
+
+        .menu-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #777;
+        }
+
+        .menu-info span:last-child {
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        /* ============ Chat area ============ */
         .chat-container {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            -webkit-overflow-scrolling: touch;
+            padding: calc(52px + var(--sat)) calc(14px + var(--sar)) 8px calc(14px + var(--sal));
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 12px;
         }
 
-        .chat-container::-webkit-scrollbar { width: 8px; }
-        .chat-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        .chat-container::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #2a2a2a;
+            border-radius: 3px;
+        }
 
         .message {
             display: flex;
-            gap: 12px;
-            max-width: 85%;
-            animation: slideIn 0.3s ease;
+            gap: 8px;
+            width: 100%;
+            max-width: 100%;
+            animation: slideIn .25s ease;
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .message.user {
@@ -137,29 +291,45 @@
         }
 
         .message-avatar {
-            width: 32px;
-            height: 32px;
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+
+            font-size: 12px;
+            background: #1a1a1a;
         }
 
-        .message.user .message-avatar { background: var(--user-bubble); }
-        .message.assistant .message-avatar { background: #1a1a1a; }
+        .message.user .message-avatar {
+            background: var(--user-bubble);
+        }
 
         .message-content {
             background: var(--ai-bubble);
-            padding: 12px 16px;
-            border-radius: 18px;
-            line-height: 1.6;
-            font-size: 14px;
+            border: 1px solid #1e1e1e;
+            padding: 10px 14px;
+            border-radius: 16px;
+
+            width: fit-content;
+            max-width: calc(100vw - 60px);
+
+            line-height: 1.55;
+            font-size: 15px;
+
+            overflow-wrap: break-word;
+            word-break: break-word;
             word-wrap: break-word;
         }
 
-        .message.user .message-content { background: var(--user-bubble); }
-        .message.assistant .message-content { border: 1px solid #222; }
+        .message.user .message-content {
+            background: var(--user-bubble);
+            border-color: transparent;
+        }
 
         .message-content.streaming::after {
             content: '▊';
@@ -169,25 +339,38 @@
         }
 
         @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
+            }
         }
 
         .message-content code {
-            background: #1a1a1a;
-            padding: 2px 6px;
+            background: rgba(255, 255, 255, .08);
+            padding: 2px 5px;
             border-radius: 4px;
-            font-family: monospace;
-            color: var(--accent);
+            font-family: 'SF Mono', Menlo, Consolas, monospace;
+            font-size: .88em;
+            color: #7ee787;
         }
 
         .message-content pre {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
             padding: 12px;
+
             overflow-x: auto;
-            margin: 12px 0;
+            max-width: 100%;
+
+            margin: 10px 0;
+            -webkit-overflow-scrolling: touch;
         }
 
         .message-content pre code {
@@ -196,54 +379,95 @@
             color: var(--text);
         }
 
-        .message-content strong { color: #fff; font-weight: 600; }
-
-        .error-message {
-            color: var(--error);
-            background: #2a1a1a;
-            border: 1px solid #442;
-            padding: 12px 16px;
-            border-radius: 12px;
-            align-self: center;
+        .message-content p {
+            margin-bottom: .5em;
         }
 
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .message-content strong {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .message-content ul,
+        .message-content ol {
+            margin: .3em 0 .5em 1.3em;
+        }
+
+        /* ============ Error ============ */
+        .error-message {
+            align-self: center;
+            color: var(--error);
+            background: rgba(255, 107, 107, .08);
+            border: 1px solid rgba(255, 107, 107, .25);
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        /* ============ Empty state ============ */
         .empty-state {
             flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #444;
-            gap: 12px;
+            color: #3a3a3a;
+            gap: 10px;
+            text-align: center;
+            padding: 20px;
         }
 
-        .empty-state-icon { font-size: 48px; opacity: 0.3; }
-        .empty-state-text { font-size: 14px; text-align: center; line-height: 1.6; }
+        .empty-icon {
+            font-size: 42px;
+            opacity: .35;
+        }
 
+        .empty-state p {
+            font-size: 13px;
+            line-height: 1.7;
+            color: #555;
+            max-width: 230px;
+        }
+
+        .empty-state kbd {
+            background: #1a1a1a;
+            border: 1px solid #2e2e2e;
+            border-radius: 5px;
+            padding: 1px 6px;
+            font-size: 11px;
+            color: #999;
+        }
+
+        /* ============ Input area ============ */
         .input-container {
-            border-top: 1px solid var(--border);
-            padding: 16px 20px;
+            padding: 8px calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal));
         }
 
         .input-wrapper {
             display: flex;
-            gap: 12px;
-            max-width: 1000px;
-            margin: 0 auto;
+            align-items: flex-end;
+            gap: 8px;
         }
 
         .input-box {
             flex: 1;
-            background: var(--bg-input);
-            border: 1px solid #333;
-            border-radius: 24px;
-            padding: 12px 18px;
+            background: var(--bg-elevated);
+            border: 1.5px solid #2a2a2a;
+            border-radius: 22px;
+            padding: 11px 16px;
             color: var(--text);
-            font-size: 14px;
+            font-size: 15px;
             font-family: inherit;
             resize: none;
-            max-height: 120px;
-            overflow-y: auto;
+            max-height: 110px;
+            min-height: 44px;
+            transition: border-color .2s;
         }
 
         .input-box:focus {
@@ -251,409 +475,629 @@
             border-color: var(--accent);
         }
 
-        .button-group {
-            display: flex;
-            gap: 8px;
+        .input-box::placeholder {
+            color: #555;
         }
 
         .btn {
+            flex-shrink: 0;
             width: 44px;
             height: 44px;
             border-radius: 50%;
             border: none;
             cursor: pointer;
-            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: transform .1s, opacity .2s;
+        }
+
+        .btn svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        .btn:active {
+            transform: scale(.92);
         }
 
         .send-button {
             background: var(--accent);
-            color: white;
+            color: #fff;
         }
 
         .skip-button {
-            background: #2a2a2a;
+            background: #232323;
             color: #888;
         }
 
-        .skip-button:hover {
-            background: #353535;
-            color: #aaa;
-        }
-
         .btn:disabled {
-            background: #1a1a1a;
-            color: #444;
+            background: #181818;
+            color: #3a3a3a;
             cursor: not-allowed;
+            transform: none;
         }
 
-        .send-button.loading {
+        .send-button.loading svg {
             animation: rotate 1s linear infinite;
         }
 
         @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ============ Focus visibility ============ */
+        .icon-btn:focus-visible,
+        .btn:focus-visible,
+        .menu-item:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* ============ Landscape layout ============ */
+        @media (orientation: landscape) {
+            .top-fade {
+                height: calc(48px + var(--sat));
+            }
+
+            .chat-container {
+                padding-top: calc(46px + var(--sat));
+            }
+
+            .chat-container,
+            .input-wrapper {
+                max-width: 840px;
+                margin: 0 auto;
+                width: 100%;
+            }
+
+            .message {
+                max-width: 75%;
+            }
+
+            .input-box {
+                max-height: 72px;
+            }
+        }
+
+        /* ============ Small phones ============ */
+        @media (max-width: 380px) {
+            .message-content {
+                font-size: 14px;
+            }
+        }
+
+        /* ================= MOBILE FIXES ================= */
+
+        .message-content img {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .message-content table {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .message-content p,
+        .message-content li {
+            word-break: break-word;
+        }
+
+        @media (max-width: 768px) {
+
+            .chat-container {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+
+            .message-content {
+                max-width: calc(100vw - 50px);
+                font-size: 14px;
+                padding: 10px 12px;
+            }
+
+            .input-box {
+                font-size: 16px;
+            }
+
+            .message-avatar {
+                width: 22px;
+                height: 22px;
+                min-width: 22px;
+                font-size: 11px;
+            }
+        }
+
+        /* ============ Reduced motion ============ */
+        @media (prefers-reduced-motion: reduce) {
+            .message {
+                animation: none;
+            }
+
+            .status-dot {
+                animation: none !important;
+            }
+
+            .send-button.loading svg {
+                animation: none;
+            }
+
+            .message-content.streaming::after {
+                animation: none;
+            }
         }
     </style>
 </head>
+
 <body>
 
-<div class="header">
-    <h1>
-        🎤 Live AI Chat
-        <span class="question-counter" id="counter">Q #0</span>
-    </h1>
-    <button onclick="clearAll()">Clear All</button>
-</div>
+    <div class="top-fade"></div>
 
-<div class="status listening" id="status">
-    <div class="status-dot"></div>
-    <div class="status-text">🔵 Listening...</div>
-</div>
+    <div class="status-pill listening" id="statusPill">
+        <span class="status-dot"></span>
+        <span class="status-label" id="statusLabel">Listening</span>
+    </div>
 
-<div class="chat-container" id="chat">
-    <div class="empty-state">
-        <div class="empty-state-icon">💬</div>
-        <div class="empty-state-text">
-            Captions stream to textbox below<br>
-            <strong>Enter</strong> to send to AI<br>
-            <strong>Skip</strong> to discard without sending
+    <div class="floating-controls">
+        <button class="icon-btn" id="menuBtn" aria-label="Menu" title="Menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1" />
+                <circle cx="12" cy="5" r="1" />
+                <circle cx="12" cy="19" r="1" />
+            </svg>
+        </button>
+        <button class="icon-btn" id="fullscreenBtn" aria-label="Toggle fullscreen" title="Fullscreen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+            </svg>
+        </button>
+    </div>
+
+    <div class="menu-dropdown" id="menuDropdown">
+        <button class="menu-item" id="clearBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Clear chat
+        </button>
+        <div class="menu-divider"></div>
+        <div class="menu-info">
+            <span>Questions</span>
+            <span id="counter">0</span>
         </div>
     </div>
-</div>
 
-<div class="input-container">
-    <div class="input-wrapper">
-        <textarea id="input" class="input-box" placeholder="Waiting for captions..." rows="1"></textarea>
-        <div class="button-group">
-            <button class="btn skip-button" id="skip" onclick="skipMsg()" title="Skip (Ctrl+D)">⏭️</button>
-            <button class="btn send-button" id="send" onclick="sendMsg()" title="Send (Enter)">➤</button>
+    <main class="chat-container" id="chat">
+        <div class="empty-state" id="emptyState">
+            <div class="empty-icon">💬</div>
+            <p>Live captions will appear in the box below.<br>Press <kbd>Enter</kbd> to ask, <kbd>Ctrl+D</kbd> to skip.
+            </p>
+        </div>
+    </main>
+
+    <div class="input-container">
+        <div class="input-wrapper">
+            <textarea id="input" class="input-box" placeholder="Listening…" rows="1" enterkeyhint="send"></textarea>
+            <button class="btn skip-button" id="skip" aria-label="Skip" title="Skip (Ctrl+D)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="m6 17 5-5-5-5" />
+                    <path d="m13 17 5-5-5-5" />
+                </svg>
+            </button>
+            <button class="btn send-button" id="send" aria-label="Send" title="Send (Enter)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="m22 2-7 20-4-9-9-4Z" />
+                    <path d="M22 2 11 13" />
+                </svg>
+            </button>
         </div>
     </div>
-</div>
 
-<script>
-marked.setOptions({
-    breaks: true,
-    gfm: true,
-    highlight: (code, lang) => {
-        if (lang && hljs.getLanguage(lang)) {
-            return hljs.highlight(code, { language: lang }).value;
-        }
-        return code;
-    }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DOM Elements
-// ═══════════════════════════════════════════════════════════════════════════
-
-const chat = document.getElementById('chat');
-const input = document.getElementById('input');
-const send = document.getElementById('send');
-const skip = document.getElementById('skip');
-const status = document.getElementById('status');
-const counter = document.getElementById('counter');
-
-// ═══════════════════════════════════════════════════════════════════════════
-// State
-// ═══════════════════════════════════════════════════════════════════════════
-
-let captionSSE = null;
-let isAIStreaming = false;
-let reconnecting = false;
-let questionCount = 0;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Init
-// ═══════════════════════════════════════════════════════════════════════════
-
-function init() {
-    // Auto-resize textarea
-    input.addEventListener('input', () => {
-        input.style.height = 'auto';
-        input.style.height = input.scrollHeight + 'px';
-    });
-
-    // Enter to send (Shift+Enter for newline)
-    input.addEventListener('keydown', (e) => {
-        if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
-            e.preventDefault();
-            sendMsg();
-        }
-        // Ctrl+D to skip
-        if (e.ctrlKey && e.key === 'd') {
-            e.preventDefault();
-            skipMsg();
-        }
-    });
-
-    startCaptionStream();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Caption Stream
-// ═══════════════════════════════════════════════════════════════════════════
-
-function startCaptionStream() {
-    console.log('🔌 Connecting caption stream...');
-    
-    if (captionSSE) captionSSE.close();
-    
-    captionSSE = new EventSource('/events');
-    
-    captionSSE.onopen = () => {
-        console.log('✅ Caption stream CONNECTED');
-    };
-    
-    captionSSE.onmessage = (e) => {
-        if (!e.data || e.data.trim() === '') return;
-        
-        try {
-            const data = JSON.parse(e.data);
-            
-            if (data.type === 'connected') {
-                console.log('✅ SSE handshake');
+    <script>
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            highlight: (code, lang) => {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return code;
             }
-            else if (data.type === 'caption') {
-                updateTextbox(data.text);
-            }
-            else if (data.type === 'state') {
-                updateStatus(data.state, data.silence);
-            }
-        } catch (err) {
-            console.error('❌ Parse error:', err);
-        }
-    };
-    
-    captionSSE.onerror = (err) => {
-        if (reconnecting) return;
-        reconnecting = true;
-        
-        console.warn('⚠️ SSE disconnected, reconnecting...');
-        captionSSE.close();
-        
-        setTimeout(() => {
-            reconnecting = false;
-            startCaptionStream();
-        }, 2000);
-    };
-}
-
-function updateTextbox(text) {
-    if (!isAIStreaming) {
-        input.value = text;
-        input.style.height = 'auto';
-        input.style.height = input.scrollHeight + 'px';
-    }
-}
-
-function updateStatus(state, silenceDetected) {
-    status.className = 'status ' + state;
-    
-    const messages = {
-        'listening': '🔵 Listening...',
-        'ready': '🟢 Ready to send (5s silence)',
-        'ai_streaming': '🟡 AI responding...'
-    };
-    
-    status.querySelector('.status-text').textContent = messages[state] || state;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Send Message
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function sendMsg() {
-    const msg = input.value.trim();
-    
-    if (!msg || isAIStreaming) return;
-
-    isAIStreaming = true;
-    send.disabled = true;
-    skip.disabled = true;
-    send.classList.add('loading');
-    send.textContent = '⏳';
-
-    try {
-        const empty = chat.querySelector('.empty-state');
-        if (empty) empty.remove();
-
-        addMsg('user', msg);
-        input.value = '';
-        input.style.height = 'auto';
-
-        await streamAI(msg);
-        
-        questionCount++;
-        counter.textContent = `Q #${questionCount}`;
-        
-    } catch (err) {
-        console.error('Send error:', err);
-    } finally {
-        isAIStreaming = false;
-        send.disabled = false;
-        skip.disabled = false;
-        send.classList.remove('loading');
-        send.textContent = '➤';
-        input.focus();
-    }
-}
-
-async function streamAI(userMsg) {
-    const aiEl = addMsg('assistant', '', true);
-    let fullResp = '';
-
-    try {
-        const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: userMsg })
         });
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
+        // ═══════════════════════════════════════════════════════════════════════════
+        // DOM Elements
+        // ═══════════════════════════════════════════════════════════════════════════
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        const chat = document.getElementById('chat');
+        const input = document.getElementById('input');
+        const send = document.getElementById('send');
+        const skip = document.getElementById('skip');
+        const statusPill = document.getElementById('statusPill');
+        const statusLabel = document.getElementById('statusLabel');
+        const counter = document.getElementById('counter');
+        const menuBtn = document.getElementById('menuBtn');
+        const menuDropdown = document.getElementById('menuDropdown');
+        const clearBtn = document.getElementById('clearBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+        const SEND_ICON = send.innerHTML;
+        const EXPAND_ICON = fullscreenBtn.innerHTML;
+        const LOADER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+        const COMPRESS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>';
 
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        
-                        if (data.type === 'token') {
-                            fullResp += data.content;
-                            const html = marked.parse(fullResp);
-                            const clean = DOMPurify.sanitize(html);
-                            aiEl.innerHTML = clean;
-                            scroll();
+        // ═══════════════════════════════════════════════════════════════════════════
+        // State
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        let captionSSE = null;
+        let isAIStreaming = false;
+        let reconnecting = false;
+        let questionCount = 0;
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Init
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        function init() {
+            // Auto-resize textarea
+            input.addEventListener('input', () => {
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+            });
+
+            // Re-fit input + keep latest message in view on orientation/resize changes
+            window.addEventListener('resize', () => {
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+                scroll();
+            });
+
+            // Enter to send (Shift+Enter for newline), Ctrl+D to skip
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMsg();
+                }
+                if (e.ctrlKey && e.key === 'd') {
+                    e.preventDefault();
+                    skipMsg();
+                }
+            });
+
+            send.addEventListener('click', sendMsg);
+            skip.addEventListener('click', skipMsg);
+
+            // Overflow menu
+            menuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menuDropdown.classList.toggle('show');
+            });
+            document.addEventListener('click', (e) => {
+                if (!menuDropdown.contains(e.target) && !menuBtn.contains(e.target)) {
+                    menuDropdown.classList.remove('show');
+                }
+            });
+            clearBtn.addEventListener('click', clearAll);
+
+            // Fullscreen
+            if (document.documentElement.requestFullscreen) {
+                fullscreenBtn.addEventListener('click', toggleFullscreen);
+                document.addEventListener('fullscreenchange', updateFullscreenIcon);
+            } else {
+                fullscreenBtn.style.display = 'none';
+            }
+
+            startCaptionStream();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Caption Stream
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        function startCaptionStream() {
+            console.log('🔌 Connecting caption stream...');
+
+            if (captionSSE) captionSSE.close();
+
+            captionSSE = new EventSource('/events');
+
+            captionSSE.onopen = () => {
+                console.log('✅ Caption stream CONNECTED');
+            };
+
+            captionSSE.onmessage = (e) => {
+                if (!e.data || e.data.trim() === '') return;
+
+                try {
+                    const data = JSON.parse(e.data);
+
+                    if (data.type === 'connected') {
+                        console.log('✅ SSE handshake');
+                    }
+                    else if (data.type === 'caption') {
+                        updateTextbox(data.text);
+                    }
+                    else if (data.type === 'state') {
+                        updateStatus(data.state);
+                    }
+                } catch (err) {
+                    console.error('❌ Parse error:', err);
+                }
+            };
+
+            captionSSE.onerror = () => {
+                if (reconnecting) return;
+                reconnecting = true;
+
+                console.warn('⚠️ SSE disconnected, reconnecting...');
+                captionSSE.close();
+
+                setTimeout(() => {
+                    reconnecting = false;
+                    startCaptionStream();
+                }, 2000);
+            };
+        }
+
+        function updateTextbox(text) {
+            if (!isAIStreaming) {
+                input.value = text;
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+            }
+        }
+
+        function updateStatus(state) {
+            statusPill.className = 'status-pill ' + state;
+
+            const labels = {
+                'listening': 'Listening',
+                'ready': 'Ready',
+                'ai_streaming': 'AI replying'
+            };
+
+            statusLabel.textContent = labels[state] || state;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Send Message
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        async function sendMsg() {
+            const msg = input.value.trim();
+
+            if (!msg || isAIStreaming) return;
+
+            isAIStreaming = true;
+            send.disabled = true;
+            skip.disabled = true;
+            send.classList.add('loading');
+            send.innerHTML = LOADER_ICON;
+
+            try {
+                const empty = document.getElementById('emptyState');
+                if (empty) empty.remove();
+
+                addMsg('user', msg);
+                input.value = '';
+                input.style.height = 'auto';
+
+                await streamAI(msg);
+
+                questionCount++;
+                counter.textContent = questionCount;
+
+            } catch (err) {
+                console.error('Send error:', err);
+            } finally {
+                isAIStreaming = false;
+                send.disabled = false;
+                skip.disabled = false;
+                send.classList.remove('loading');
+                send.innerHTML = SEND_ICON;
+                input.focus();
+            }
+        }
+
+        async function streamAI(userMsg) {
+            const aiEl = addMsg('assistant', '', true);
+            let fullResp = '';
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: userMsg })
+                });
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+
+                                if (data.type === 'token') {
+                                    fullResp += data.content;
+                                    const html = marked.parse(fullResp);
+                                    const clean = DOMPurify.sanitize(html);
+                                    aiEl.innerHTML = clean;
+                                    scroll();
+                                }
+                                else if (data.type === 'error') {
+                                    showErr(data.message);
+                                    break;
+                                }
+                                else if (data.type === 'done') {
+                                    break;
+                                }
+                            } catch (e) {
+                                console.error('Parse error:', e);
+                            }
                         }
-                        else if (data.type === 'error') {
-                            showErr(data.message);
-                            break;
-                        }
-                        else if (data.type === 'done') {
-                            break;
-                        }
-                    } catch (e) {
-                        console.error('Parse error:', e);
                     }
                 }
+
+                if (fullResp) {
+                    const html = marked.parse(fullResp);
+                    const clean = DOMPurify.sanitize(html);
+                    aiEl.innerHTML = clean;
+                    aiEl.querySelectorAll('pre code').forEach(hljs.highlightElement);
+                }
+
+            } catch (err) {
+                console.error('❌ AI stream error:', err);
+                showErr('Connection failed');
+            } finally {
+                aiEl.classList.remove('streaming');
             }
         }
 
-        if (fullResp) {
-            const html = marked.parse(fullResp);
-            const clean = DOMPurify.sanitize(html);
-            aiEl.innerHTML = clean;
-            aiEl.querySelectorAll('pre code').forEach(hljs.highlightElement);
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Skip Message
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        async function skipMsg() {
+            const text = input.value.trim();
+
+            if (!text || isAIStreaming) return;
+
+            console.log('⏭️ Skipping:', text.substring(0, 50));
+
+            try {
+                await fetch('/api/skip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+
+                input.value = '';
+                input.style.height = 'auto';
+
+                questionCount++;
+                counter.textContent = questionCount;
+
+            } catch (err) {
+                console.error('Skip error:', err);
+            }
         }
-        
-    } catch (err) {
-        console.error('❌ AI stream error:', err);
-        showErr('Connection failed');
-    } finally {
-        aiEl.classList.remove('streaming');
-    }
-}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Skip Message
-// ═══════════════════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════════════════
+        // UI Helpers
+        // ═══════════════════════════════════════════════════════════════════════════
 
-async function skipMsg() {
-    const text = input.value.trim();
-    
-    if (!text || isAIStreaming) return;
-    
-    console.log('⏭️ Skipping:', text.substring(0, 50));
-    
-    try {
-        await fetch('/api/skip', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: text })
-        });
-        
-        input.value = '';
-        input.style.height = 'auto';
-        
-        questionCount++;
-        counter.textContent = `Q #${questionCount}`;
-        
-    } catch (err) {
-        console.error('Skip error:', err);
-    }
-}
+        function addMsg(role, content, streaming = false) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// UI Helpers
-// ═══════════════════════════════════════════════════════════════════════════
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'user' ? '👤' : '🤖';
 
-function addMsg(role, content, streaming = false) {
-    const div = document.createElement('div');
-    div.className = `message ${role}`;
-    
-    const avatar = document.createElement('div');
-    avatar.className = 'message-avatar';
-    avatar.textContent = role === 'user' ? '👤' : '🤖';
-    
-    const cont = document.createElement('div');
-    cont.className = 'message-content';
-    if (streaming) cont.classList.add('streaming');
-    cont.textContent = content;
-    
-    div.appendChild(avatar);
-    div.appendChild(cont);
-    chat.appendChild(div);
-    
-    scroll();
-    return cont;
-}
+            const cont = document.createElement('div');
+            cont.className = 'message-content';
+            if (streaming) cont.classList.add('streaming');
+            cont.textContent = content;
 
-function showErr(msg) {
-    const div = document.createElement('div');
-    div.className = 'error-message';
-    div.textContent = '⚠️ ' + msg;
-    chat.appendChild(div);
-    scroll();
-}
+            div.appendChild(avatar);
+            div.appendChild(cont);
+            chat.appendChild(div);
 
-function scroll() {
-    chat.scrollTop = chat.scrollHeight;
-}
+            scroll();
+            return cont;
+        }
 
-function clearAll() {
-    if (!confirm('Clear all chat and reset checkpoint?')) return;
-    
-    fetch('/api/chat/clear', { method: 'POST' })
-        .then(() => {
-            chat.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">💬</div>
-                    <div class="empty-state-text">
-                        Captions stream to textbox below<br>
-                        <strong>Enter</strong> to send to AI<br>
-                        <strong>Skip</strong> to discard without sending
+        function showErr(msg) {
+            const div = document.createElement('div');
+            div.className = 'error-message';
+            div.textContent = '⚠️ ' + msg;
+            chat.appendChild(div);
+            scroll();
+        }
+
+        function scroll() {
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function clearAll() {
+            menuDropdown.classList.remove('show');
+            if (!confirm('Clear all chat and reset checkpoint?')) return;
+
+            fetch('/api/chat/clear', { method: 'POST' })
+                .then(() => {
+                    chat.innerHTML = `
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-icon">💬</div>
+                        <p>Live captions will appear in the box below.<br>Press <kbd>Enter</kbd> to ask, <kbd>Ctrl+D</kbd> to skip.</p>
                     </div>
-                </div>
-            `;
-            input.value = '';
-            questionCount = 0;
-            counter.textContent = 'Q #0';
-        });
-}
+                `;
+                    input.value = '';
+                    questionCount = 0;
+                    counter.textContent = '0';
+                });
+        }
 
-init();
-</script>
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Fullscreen
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.warn('Fullscreen request failed:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function updateFullscreenIcon() {
+            fullscreenBtn.innerHTML = document.fullscreenElement ? COMPRESS_ICON : EXPAND_ICON;
+        }
+
+        // Fix fullscreen keyboard issue
+        if (window.visualViewport) {
+
+            visualViewport.addEventListener('resize', () => {
+
+                document.body.style.height =
+                    visualViewport.height + 'px';
+
+                scroll();
+            });
+
+        }
+
+        init();
+    </script>
 
 </body>
+
 </html>
