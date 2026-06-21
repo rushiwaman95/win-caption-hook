@@ -6,6 +6,7 @@ import json
 import time
 from flask import Blueprint, render_template, jsonify, Response, request, stream_with_context
 import core.state as state
+from core.caption_control import restart_captions
 from api.groq_client import stream_chat
 
 bp = Blueprint('api', __name__)
@@ -94,6 +95,10 @@ def chat():
         state.set_state(state.OrchestratorState.AI_STREAMING)
         state.pause_capture()
 
+        # Restart Live Captions (fresh window for next question)
+        restart_captions()
+        print(f"🔄 Live Captions restarted")
+
         print(f"📌 Checkpoint updated")
 
         messages = [{"role": "user", "content": user_message}]
@@ -159,6 +164,10 @@ def skip():
         state.set_state(state.OrchestratorState.LISTENING)
         state.reset_silence()
 
+        # Restart Live Captions (fresh window for next question)
+        restart_captions()
+        print(f"🔄 Live Captions restarted")
+
         return jsonify({'success': True, 'checkpoint': state.get_checkpoint()[:100]})
 
     except Exception as e:
@@ -171,6 +180,11 @@ def clear_history():
     """Clear everything"""
     print("🗑️  Clearing all state")
     state.reset_all()
+
+    # Restart Live Captions on clear too
+    restart_captions()
+    print(f"🔄 Live Captions restarted")
+
     return jsonify({'success': True})
 
 
