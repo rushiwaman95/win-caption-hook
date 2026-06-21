@@ -15,7 +15,7 @@ def find_window(desktop):
     for title in ["Live Captions", "Live captions", "Captions"]:
         try:
             win = desktop.window(title=title)
-            print(f"✅ Live Captions found: '{title}'")
+            # print(f"✅ Live Captions found: '{title}'")
             return win
         except:
             continue
@@ -169,7 +169,7 @@ def capture():
             # ───────────────────────────────────────────────
 
         except Exception as e:
-            print(f"⚠️ Capture error: {e}")
+            # print(f"⚠️ Capture error: {e}")
             win = None
             while win is None:
                 state.CAPTURE_EVENT.wait()
